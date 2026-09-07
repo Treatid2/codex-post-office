@@ -1,0 +1,217 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/task.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "acceptanceContractRoot": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+      "aggregateRoot": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "aggregateVersion": 1,
+      "authorityGrantId": "PON-GRANT-001",
+      "createdEventId": "PON-EVENT-001",
+      "id": "PON-TASK-001",
+      "mutablePackageIds": [
+        "PON-PACKAGE-001"
+      ],
+      "objective": "Implement one package",
+      "projectId": "PON-PROJECT-001",
+      "readOnlyInputs": [],
+      "schemaVersion": "1",
+      "state": "READY",
+      "taskKind": "PACKAGE_DEVELOPMENT"
+    }
+  ],
+  "oneOf": [
+    {
+      "additionalProperties": true,
+      "properties": {
+        "mutablePackageIds": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+            "type": "string"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "type": "array"
+        },
+        "taskKind": {
+          "const": "PACKAGE_DEVELOPMENT"
+        }
+      },
+      "required": [
+        "taskKind",
+        "mutablePackageIds"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": true,
+      "properties": {
+        "mutablePackageIds": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+            "type": "string"
+          },
+          "maxItems": 0,
+          "minItems": 0,
+          "type": "array"
+        },
+        "taskKind": {
+          "enum": [
+            "PACKAGE_REVIEW",
+            "PROJECT_MANAGEMENT",
+            "INTEGRATION",
+            "EVALUATION"
+          ]
+        }
+      },
+      "required": [
+        "taskKind",
+        "mutablePackageIds"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": true,
+      "properties": {
+        "mutablePackageIds": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+            "type": "string"
+          },
+          "maxItems": 1,
+          "minItems": 0,
+          "type": "array"
+        },
+        "taskKind": {
+          "enum": [
+            "FGPM_CORE",
+            "HUB_INFRASTRUCTURE",
+            "DOCUMENTATION"
+          ]
+        }
+      },
+      "required": [
+        "taskKind",
+        "mutablePackageIds"
+      ],
+      "type": "object"
+    }
+  ],
+  "properties": {
+    "acceptanceContractRoot": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "aggregateRoot": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "aggregateVersion": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "authorityGrantId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "createdEventId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "mutablePackageIds": {
+      "items": {
+        "minLength": 1,
+        "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+        "type": "string"
+      },
+      "maxItems": 1,
+      "minItems": 0,
+      "type": "array"
+    },
+    "objective": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "projectId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "readOnlyInputs": {
+      "items": {
+        "minLength": 1,
+        "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "state": {
+      "enum": [
+        "PROPOSED",
+        "TRIAGED",
+        "AWAITING_AUTHORITY",
+        "PROVISIONING",
+        "READY",
+        "ACTIVE",
+        "BLOCKED",
+        "RESPONSE_RETURNED",
+        "UNDER_REVIEW",
+        "ACCEPTED",
+        "CORRECTION_REQUIRED",
+        "REJECTED",
+        "CLOSED",
+        "CANCELLED"
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "taskKind": {
+      "enum": [
+        "PACKAGE_DEVELOPMENT",
+        "PACKAGE_REVIEW",
+        "PROJECT_MANAGEMENT",
+        "INTEGRATION",
+        "EVALUATION",
+        "FGPM_CORE",
+        "HUB_INFRASTRUCTURE",
+        "DOCUMENTATION"
+      ],
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "projectId",
+    "taskKind",
+    "objective",
+    "mutablePackageIds",
+    "readOnlyInputs",
+    "acceptanceContractRoot",
+    "authorityGrantId",
+    "state",
+    "createdEventId",
+    "aggregateVersion",
+    "aggregateRoot"
+  ],
+  "title": "task",
+  "type": "object"
+}

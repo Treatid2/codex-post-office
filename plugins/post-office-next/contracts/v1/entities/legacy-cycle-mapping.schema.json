@@ -1,0 +1,102 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/legacy-cycle-mapping.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "classification": "AMBIGUOUS",
+      "decision": "REVIEW_REQUIRED",
+      "evidence": [],
+      "id": "PON-MAPPING-001",
+      "legacyCycleId": "LEGACY-CYCLE-001",
+      "schemaVersion": "1",
+      "transportMessageIds": [
+        "LEGACY-MSG-001"
+      ]
+    }
+  ],
+  "properties": {
+    "classification": {
+      "enum": [
+        "EXACT",
+        "TRANSPORT_ONLY",
+        "AMBIGUOUS"
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "decision": {
+      "enum": [
+        "PRESERVE",
+        "REVIEW_REQUIRED"
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "evidence": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reference": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sha256": {
+            "minLength": 1,
+            "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "reference"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "legacyCycleId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "semanticCycleId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "transportMessageIds": {
+      "items": {
+        "minLength": 1,
+        "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "legacyCycleId",
+    "transportMessageIds",
+    "classification",
+    "evidence",
+    "decision"
+  ],
+  "title": "legacy-cycle-mapping",
+  "type": "object"
+}

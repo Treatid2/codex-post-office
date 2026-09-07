@@ -1,0 +1,13 @@
+{
+  "actor": {
+    "id": "PON-ACTOR-001",
+    "kind": "HUMAN",
+    "role": "authenticated-reader"
+  },
+  "authority": {
+    "capabilityId": "PON-CAPABILITY-001"
+  },
+  "operation": "hub.status",
+  "parameters": {},
+  "schemaVersion": "1"
+}

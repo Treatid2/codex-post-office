@@ -1,0 +1,22 @@
+{
+  "actor": {
+    "id": "PON-ACTOR-001",
+    "kind": "HUMAN",
+    "role": "author-or-delegated-browser"
+  },
+  "aggregate": {
+    "expectedVersion": 0,
+    "id": "PON-AGGREGATE-001",
+    "type": "Example"
+  },
+  "authority": {
+    "authorityGrantId": "PON-GRANT-001",
+    "capabilityId": "PON-CAPABILITY-001"
+  },
+  "operation": "hub.reconcile.apply",
+  "parameters": {
+    "planRoot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "previewPlanId": "PON-EXAMPLE-001"
+  },
+  "schemaVersion": "1"
+}

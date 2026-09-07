@@ -1,0 +1,31 @@
+{
+  "name": "automatic-code-review",
+  "version": "0.1.0",
+  "description": "Project-independent automatic code review with Post Office-backed transport and custody.",
+  "author": {
+    "name": "Treatid2",
+    "url": "https://github.com/Treatid2"
+  },
+  "homepage": "https://github.com/Treatid2/codex-post-office/tree/main/plugins/automatic-code-review",
+  "repository": "https://github.com/Treatid2/codex-post-office",
+  "license": "MPL-2.0",
+  "keywords": ["codex", "code-review", "automation", "pull-request"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Automatic Code Review",
+    "shortDescription": "Submit and follow independent code reviews.",
+    "longDescription": "A project-independent review companion. Tasks use a review-only client surface; Post Office supplies hash custody, browser transport, FIFO scheduling, monitoring, and verified result return without granting postal operations.",
+    "developerName": "Treatid2",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Treatid2/codex-post-office",
+    "defaultPrompt": [
+      "Check automatic-review access.",
+      "Ensure this review request exists exactly once.",
+      "Check the status of a review."
+    ]
+  }
+}

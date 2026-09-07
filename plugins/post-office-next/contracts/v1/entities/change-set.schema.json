@@ -1,0 +1,101 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/change-set.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "dependencyEdges": [],
+      "id": "PON-CHANGE-001",
+      "integrationContractRoot": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "purpose": "Coordinated change",
+      "schemaVersion": "1",
+      "state": "PROPOSED",
+      "taskIds": [
+        "PON-TASK-001"
+      ]
+    }
+  ],
+  "properties": {
+    "decisionId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "dependencyEdges": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "fromTaskId": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+            "type": "string"
+          },
+          "toTaskId": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fromTaskId",
+          "toTaskId"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "integrationContractRoot": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "purpose": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "state": {
+      "enum": [
+        "PROPOSED",
+        "TASKS_AUTHORISED",
+        "TASKS_ACTIVE",
+        "CANDIDATES_READY",
+        "INTEGRATION",
+        "ACCEPTED",
+        "PARTIAL",
+        "REJECTED",
+        "CLOSED"
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "taskIds": {
+      "items": {
+        "minLength": 1,
+        "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "purpose",
+    "taskIds",
+    "integrationContractRoot",
+    "dependencyEdges",
+    "state"
+  ],
+  "title": "change-set",
+  "type": "object"
+}

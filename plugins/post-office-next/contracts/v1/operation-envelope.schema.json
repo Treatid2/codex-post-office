@@ -1,0 +1,170 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/operation-envelope.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": true,
+  "examples": [
+    {
+      "actor": {
+        "id": "PON-ACTOR-001",
+        "kind": "HUMAN"
+      },
+      "authority": {
+        "capabilityId": "PON-CAPABILITY-001"
+      },
+      "operation": "hub.status",
+      "parameters": {},
+      "requestId": "PON-REQUEST-001",
+      "schemaVersion": "1"
+    }
+  ],
+  "properties": {
+    "actor": {
+      "minProperties": 1,
+      "type": "object"
+    },
+    "aggregate": {
+      "type": "object"
+    },
+    "authority": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "capabilityId": {
+              "minLength": 3,
+              "type": "string"
+            }
+          },
+          "required": [
+            "capabilityId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "authorityGrantId": {
+              "minLength": 3,
+              "type": "string"
+            },
+            "capabilityId": {
+              "minLength": 3,
+              "type": "string"
+            }
+          },
+          "required": [
+            "capabilityId",
+            "authorityGrantId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "capabilityId": {
+              "minLength": 3,
+              "type": "string"
+            },
+            "exactAuthorActionId": {
+              "minLength": 3,
+              "type": "string"
+            }
+          },
+          "required": [
+            "capabilityId",
+            "exactAuthorActionId"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "operation": {
+      "enum": [
+        "attention.list",
+        "authority.grant",
+        "authority.inspect",
+        "authority.revoke",
+        "bundle.supersedeBeforeRegistration",
+        "bundle.verify",
+        "capabilityRequest.create",
+        "capabilityRequest.fulfil",
+        "capabilityRequest.read",
+        "capabilityRequest.triage",
+        "changeSet.addTask",
+        "changeSet.create",
+        "changeSet.decide",
+        "changeSet.startIntegration",
+        "contextBundle.build",
+        "cycle.accept",
+        "cycle.close",
+        "cycle.markAwaitingReview",
+        "cycle.open",
+        "endpoint.allocate",
+        "endpoint.revoke",
+        "hub.reconcile.apply",
+        "hub.reconcile.preview",
+        "hub.snapshot",
+        "hub.status",
+        "integration.record",
+        "interface.deprecate",
+        "interface.read",
+        "interface.register",
+        "mailbox.allocate",
+        "mailbox.rotateGeneration",
+        "message.acknowledge",
+        "message.close",
+        "message.plan",
+        "message.register",
+        "message.review",
+        "message.route",
+        "package.deprecate",
+        "package.read",
+        "package.register",
+        "package.registerVersion",
+        "package.rehome",
+        "package.rehome.preview",
+        "project.archive",
+        "project.create",
+        "project.pause",
+        "project.planCreate",
+        "project.read",
+        "project.update",
+        "provisioning.inspect",
+        "task.activate",
+        "task.bindEndpoint",
+        "task.block",
+        "task.close",
+        "task.create",
+        "task.moveProject",
+        "task.planCreate",
+        "task.read",
+        "task.recordResponse",
+        "task.review",
+        "transport.inspect",
+        "transport.quarantine",
+        "transport.retry",
+        "transport.tombstoneDuplicate"
+      ]
+    },
+    "parameters": {
+      "type": "object"
+    },
+    "requestId": {
+      "minLength": 3,
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "operation",
+    "requestId",
+    "actor",
+    "authority",
+    "parameters"
+  ],
+  "title": "Post Office Next common operation envelope",
+  "type": "object"
+}

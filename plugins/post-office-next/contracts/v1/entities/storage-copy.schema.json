@@ -1,0 +1,85 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/storage-copy.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "contentSha256": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "id": "PON-COPY-001",
+      "location": "payloads/66/object",
+      "locationKind": "LOCAL_CAS",
+      "retentionClass": "AUTHORITATIVE",
+      "schemaVersion": "1",
+      "sizeBytes": 10,
+      "verificationLevel": "SHA256_READBACK",
+      "verifiedAt": "2026-09-04T12:00:00Z"
+    }
+  ],
+  "properties": {
+    "contentSha256": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "location": {
+      "minLength": 1,
+      "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$",
+      "type": "string"
+    },
+    "locationKind": {
+      "enum": [
+        "LOCAL_CAS",
+        "LOCAL_BACKUP",
+        "DATABASE_BLOB"
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "retentionClass": {
+      "enum": [
+        "AUTHORITATIVE",
+        "BACKUP"
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "sizeBytes": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "verificationLevel": {
+      "enum": [
+        "SHA256_WRITE",
+        "SHA256_READBACK"
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "verifiedAt": {
+      "minLength": 1,
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "contentSha256",
+    "locationKind",
+    "location",
+    "sizeBytes",
+    "retentionClass",
+    "verificationLevel",
+    "verifiedAt"
+  ],
+  "title": "storage-copy",
+  "type": "object"
+}

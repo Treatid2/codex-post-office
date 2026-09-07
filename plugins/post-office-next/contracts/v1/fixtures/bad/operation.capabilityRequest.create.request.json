@@ -1,0 +1,30 @@
+{
+  "actor": {
+    "id": "PON-ACTOR-001",
+    "kind": "HUMAN",
+    "role": "project-manager"
+  },
+  "aggregate": {
+    "expectedVersion": 0,
+    "id": "PON-AGGREGATE-001",
+    "type": "Example"
+  },
+  "authority": {
+    "authorityGrantId": "PON-GRANT-001",
+    "capabilityId": "PON-CAPABILITY-001"
+  },
+  "operation": "capabilityRequest.create",
+  "parameters": {
+    "request": {
+      "acceptanceFixtureRoot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "id": "PON-EXAMPLE-001",
+      "priority": "LOW",
+      "problem": "example",
+      "requestingProjectId": "PON-EXAMPLE-001",
+      "requiredBehaviour": [
+        "example"
+      ]
+    }
+  },
+  "schemaVersion": "1"
+}

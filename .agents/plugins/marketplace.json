@@ -1,0 +1,44 @@
+{
+  "name": "treatid2",
+  "interface": {
+    "displayName": "Treatid2"
+  },
+  "plugins": [
+    {
+      "name": "post-office-next",
+      "source": {
+        "source": "local",
+        "path": "./plugins/post-office-next"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "automatic-code-review",
+      "source": {
+        "source": "local",
+        "path": "./plugins/automatic-code-review"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "playwright-browser-bridge",
+      "source": {
+        "source": "local",
+        "path": "./plugins/playwright-browser-bridge"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

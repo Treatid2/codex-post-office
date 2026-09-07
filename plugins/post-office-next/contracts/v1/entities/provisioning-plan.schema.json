@@ -1,0 +1,125 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/provisioning-plan.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "aggregateId": "PON-TASK-001",
+      "aggregateType": "Task",
+      "authorityId": "PON-GRANT-001",
+      "compensations": [],
+      "id": "PON-PLAN-001",
+      "planRoot": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "requestedResources": [
+        {
+          "identity": "PON-MAILBOX-001",
+          "kind": "mailbox"
+        }
+      ],
+      "schemaVersion": "1",
+      "stage": "PLAN"
+    }
+  ],
+  "properties": {
+    "aggregateId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "aggregateType": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "authorityId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "compensations": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource",
+          "action"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "planRoot": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "requestedResources": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "identity": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "identity"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "stage": {
+      "enum": [
+        "PLAN",
+        "AUTHORISED",
+        "IDS_RESERVED",
+        "EXTERNAL_PENDING",
+        "VERIFIED",
+        "COMMITTED",
+        "READY",
+        "COMPENSATING",
+        "ROLLED_BACK",
+        "ORPHANED_REVIEW"
+      ],
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "aggregateType",
+    "aggregateId",
+    "requestedResources",
+    "authorityId",
+    "planRoot",
+    "stage",
+    "compensations"
+  ],
+  "title": "provisioning-plan",
+  "type": "object"
+}

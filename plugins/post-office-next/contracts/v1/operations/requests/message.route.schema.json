@@ -1,0 +1,215 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/operations/message.route.request.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "actor": {
+        "id": "PON-ACTOR-001",
+        "kind": "HUMAN",
+        "role": "courier"
+      },
+      "aggregate": {
+        "expectedVersion": 0,
+        "id": "PON-AGGREGATE-001",
+        "type": "Example"
+      },
+      "authority": {
+        "authorityGrantId": "PON-GRANT-001",
+        "capabilityId": "PON-CAPABILITY-001"
+      },
+      "operation": "message.route",
+      "parameters": {
+        "bundleId": "PON-EXAMPLE-001",
+        "destinationGeneration": 1,
+        "destinationMailboxId": "PON-EXAMPLE-001",
+        "semanticMessageId": "PON-EXAMPLE-001"
+      },
+      "requestId": "PON-REQUEST-001",
+      "schemaVersion": "1"
+    }
+  ],
+  "properties": {
+    "actor": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "HUMAN",
+            "BROWSER",
+            "COURIER",
+            "ENDPOINT",
+            "SYSTEM"
+          ],
+          "minLength": 1,
+          "type": "string"
+        },
+        "role": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "role"
+      ],
+      "type": "object"
+    },
+    "aggregate": {
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "expectedVersion"
+          ]
+        },
+        {
+          "required": [
+            "expectedRoot"
+          ]
+        }
+      ],
+      "properties": {
+        "expectedRoot": {
+          "minLength": 1,
+          "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "expectedVersion": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "id": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "type": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "id"
+      ],
+      "type": "object"
+    },
+    "authority": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "authorityGrantId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "capabilityId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "exactAuthorActionId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "capabilityId",
+            "authorityGrantId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "authorityGrantId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "capabilityId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "exactAuthorActionId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "capabilityId",
+            "exactAuthorActionId"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "operation": {
+      "const": "message.route"
+    },
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "bundleId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "destinationGeneration": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "destinationMailboxId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "semanticMessageId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "semanticMessageId",
+        "bundleId",
+        "destinationMailboxId",
+        "destinationGeneration"
+      ],
+      "type": "object"
+    },
+    "requestId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "operation",
+    "requestId",
+    "actor",
+    "authority",
+    "parameters",
+    "aggregate"
+  ],
+  "title": "message.route request",
+  "type": "object",
+  "x-contractStatus": "CONTRACT_ONLY",
+  "x-minimumAuthority": "courier",
+  "x-mutates": true
+}

@@ -1,0 +1,86 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/attention-item.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "createdEventId": "PON-EVENT-001",
+      "id": "PON-ATTENTION-001",
+      "owningRole": "browser-manager",
+      "reasonCode": "PROJECTION_STALE",
+      "relatedEntityId": "PON-PROJECTION-001",
+      "relatedEntityType": "ProjectionCursor",
+      "schemaVersion": "1",
+      "severity": "WARNING",
+      "state": "OPEN"
+    }
+  ],
+  "properties": {
+    "createdEventId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "owningRole": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "reasonCode": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "relatedEntityId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "relatedEntityType": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "resolvedEventId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "severity": {
+      "enum": [
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "CRITICAL"
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "OPEN",
+        "RESOLVED"
+      ],
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "reasonCode",
+    "owningRole",
+    "relatedEntityType",
+    "relatedEntityId",
+    "severity",
+    "createdEventId",
+    "state"
+  ],
+  "title": "attention-item",
+  "type": "object"
+}

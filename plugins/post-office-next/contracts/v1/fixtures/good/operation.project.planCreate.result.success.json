@@ -1,0 +1,17 @@
+{
+  "afterRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "aggregateVersion": 0,
+  "beforeRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "createdIds": [],
+  "ok": true,
+  "operation": "project.planCreate",
+  "receipt": {
+    "receiptId": "PON-RECEIPT-001",
+    "recordedAt": "2026-09-04T12:00:00Z",
+    "requestSha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "stateRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "requestId": "PON-REQUEST-001",
+  "schemaVersion": "1",
+  "warnings": []
+}

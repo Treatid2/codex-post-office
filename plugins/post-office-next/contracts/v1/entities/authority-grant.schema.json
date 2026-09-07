@@ -1,0 +1,164 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/authority-grant.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "allowedOperations": [
+        "task.create"
+      ],
+      "classification": "ONE_SHOT",
+      "createdEventId": "PON-EVENT-001",
+      "grantorId": "AUTHOR-001",
+      "id": "PON-GRANT-001",
+      "maximumUses": 1,
+      "rationale": "Bounded task creation",
+      "recipientId": "BROWSER-001",
+      "remainingUses": 1,
+      "schemaVersion": "1",
+      "scope": {
+        "projectIds": [
+          "PON-PROJECT-001"
+        ]
+      },
+      "sourceDecisionId": "PON-DECISION-001",
+      "status": "ACTIVE"
+    }
+  ],
+  "properties": {
+    "allowedOperations": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "classification": {
+      "enum": [
+        "ONE_SHOT",
+        "STANDING"
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "createdEventId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "expiresAt": {
+      "minLength": 1,
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+      "type": "string"
+    },
+    "grantorId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "maximumUses": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "rationale": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "recipientId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "remainingUses": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "revokedEventId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "scope": {
+      "additionalProperties": false,
+      "properties": {
+        "mailDomains": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+            "type": "string"
+          },
+          "minItems": 0,
+          "type": "array"
+        },
+        "packageIds": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+            "type": "string"
+          },
+          "minItems": 0,
+          "type": "array"
+        },
+        "projectIds": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+            "type": "string"
+          },
+          "minItems": 0,
+          "type": "array"
+        },
+        "taskIds": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+            "type": "string"
+          },
+          "minItems": 0,
+          "type": "array"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "sourceDecisionId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "ACTIVE",
+        "EXHAUSTED",
+        "EXPIRED",
+        "REVOKED"
+      ],
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "grantorId",
+    "recipientId",
+    "allowedOperations",
+    "scope",
+    "classification",
+    "status",
+    "rationale",
+    "sourceDecisionId",
+    "createdEventId"
+  ],
+  "title": "authority-grant",
+  "type": "object"
+}

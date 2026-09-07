@@ -1,0 +1,23 @@
+{
+  "actor": {
+    "id": "PON-ACTOR-001",
+    "kind": "HUMAN",
+    "role": "author"
+  },
+  "aggregate": {
+    "expectedVersion": 0,
+    "id": "PON-AGGREGATE-001",
+    "type": "Example"
+  },
+  "authority": {
+    "capabilityId": "PON-CAPABILITY-001",
+    "exactAuthorActionId": "PON-AUTHOR-ACTION-001"
+  },
+  "operation": "cycle.open",
+  "parameters": {
+    "cycleId": "PON-EXAMPLE-001",
+    "projectId": "PON-EXAMPLE-001",
+    "scope": "example"
+  },
+  "schemaVersion": "1"
+}

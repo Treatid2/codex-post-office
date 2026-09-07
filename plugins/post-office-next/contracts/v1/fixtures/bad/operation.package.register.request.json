@@ -1,0 +1,31 @@
+{
+  "actor": {
+    "id": "PON-ACTOR-001",
+    "kind": "HUMAN",
+    "role": "browser"
+  },
+  "aggregate": {
+    "expectedVersion": 0,
+    "id": "PON-AGGREGATE-001",
+    "type": "Example"
+  },
+  "authority": {
+    "authorityGrantId": "PON-GRANT-001",
+    "capabilityId": "PON-CAPABILITY-001"
+  },
+  "operation": "package.register",
+  "parameters": {
+    "package": {
+      "displayName": "example",
+      "id": "PON-EXAMPLE-001",
+      "owningProjectId": "PON-EXAMPLE-001",
+      "providedInterfaceIds": [
+        "PON-EXAMPLE-001"
+      ],
+      "requiredInterfaceIds": [
+        "PON-EXAMPLE-001"
+      ]
+    }
+  },
+  "schemaVersion": "1"
+}

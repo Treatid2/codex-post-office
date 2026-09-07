@@ -1,0 +1,15 @@
+{
+  "aggregateId": "PON-TASK-001",
+  "aggregateType": "Task",
+  "authorityId": "PON-GRANT-001",
+  "compensations": [],
+  "id": "PON-PLAN-001",
+  "planRoot": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "requestedResources": [
+    {
+      "identity": "PON-MAILBOX-001",
+      "kind": "mailbox"
+    }
+  ],
+  "stage": "PLAN"
+}

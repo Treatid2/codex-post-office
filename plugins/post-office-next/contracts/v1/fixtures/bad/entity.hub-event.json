@@ -1,0 +1,20 @@
+{
+  "actorId": "PON-ACTOR-001",
+  "afterStateRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "aggregateId": "PON-TASK-001",
+  "aggregateType": "Task",
+  "aggregateVersion": 1,
+  "authority": {
+    "authorityGrantId": "PON-GRANT-001",
+    "capabilityId": "PON-CAPABILITY-001"
+  },
+  "beforeStateRoot": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "eventSha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "id": "PON-EVENT-001",
+  "operation": "task.create",
+  "payloadSha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "result": {
+    "created": true
+  },
+  "timestamp": "2026-09-04T12:00:00Z"
+}

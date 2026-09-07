@@ -1,0 +1,14 @@
+{
+  "diagnostic": {
+    "code": "PON_INPUT_INVALID",
+    "details": {},
+    "message": "Example failure",
+    "retryable": false,
+    "schemaVersion": "1",
+    "severity": "ERROR"
+  },
+  "ok": false,
+  "operation": "task.close",
+  "requestId": "PON-REQUEST-001",
+  "schemaVersion": "1"
+}

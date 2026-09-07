@@ -1,0 +1,14 @@
+{
+  "acceptanceFixtureRoot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fulfilmentEvidence": [],
+  "id": "PON-REQUEST-001",
+  "linkedTaskIds": [],
+  "priority": "NORMAL",
+  "problem": "Missing capability",
+  "requestingProjectId": "PON-PROJECT-001",
+  "requiredBehaviour": [
+    "Deterministic output"
+  ],
+  "schemaVersion": "1",
+  "status": "OPEN"
+}

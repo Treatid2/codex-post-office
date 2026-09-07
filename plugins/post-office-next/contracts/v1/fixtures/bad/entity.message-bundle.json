@@ -1,0 +1,17 @@
+{
+  "bundleVersion": 1,
+  "canonicalFilename": "PON-MSG-001_v01.zip",
+  "custodyEvidence": [],
+  "id": "PON-BUNDLE-001",
+  "manifestRoot": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+  "payloads": [
+    {
+      "path": "message.json",
+      "sha256": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "sizeBytes": 10
+    }
+  ],
+  "semanticMessageId": "PON-MSG-001",
+  "sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "sizeBytes": 10
+}

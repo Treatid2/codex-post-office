@@ -1,0 +1,14 @@
+{
+  "accessScope": {
+    "projectIds": [
+      "PON-PROJECT-001"
+    ]
+  },
+  "createdEventId": "PON-EVENT-001",
+  "id": "PON-ENDPOINT-001",
+  "mailboxId": "PON-MAILBOX-001",
+  "projectId": "PON-PROJECT-001",
+  "role": "worker",
+  "startupRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "status": "ACTIVE"
+}

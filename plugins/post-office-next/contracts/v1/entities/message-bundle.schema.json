@@ -1,0 +1,133 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/message-bundle.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "bundleVersion": 1,
+      "canonicalFilename": "PON-MSG-001_v01.zip",
+      "custodyEvidence": [],
+      "id": "PON-BUNDLE-001",
+      "manifestRoot": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "payloads": [
+        {
+          "path": "message.json",
+          "sha256": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "sizeBytes": 10
+        }
+      ],
+      "schemaVersion": "1",
+      "semanticMessageId": "PON-MSG-001",
+      "sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "sizeBytes": 10
+    }
+  ],
+  "properties": {
+    "bundleVersion": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "canonicalFilename": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$",
+      "type": "string"
+    },
+    "custodyEvidence": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reference": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sha256": {
+            "minLength": 1,
+            "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "reference"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "manifestRoot": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "payloads": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "minLength": 1,
+            "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$",
+            "type": "string"
+          },
+          "sha256": {
+            "minLength": 1,
+            "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "sizeBytes": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "sizeBytes",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "semanticMessageId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "sha256": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "sizeBytes": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "semanticMessageId",
+    "canonicalFilename",
+    "bundleVersion",
+    "sizeBytes",
+    "sha256",
+    "manifestRoot",
+    "payloads",
+    "custodyEvidence"
+  ],
+  "title": "message-bundle",
+  "type": "object"
+}

@@ -1,0 +1,69 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/diagnostic.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "code": "PON_CONTRACT_FIXTURE_UNEXPECTED",
+      "details": {},
+      "message": "Example diagnostic",
+      "retryable": false,
+      "schemaVersion": "1",
+      "severity": "ERROR"
+    }
+  ],
+  "properties": {
+    "code": {
+      "enum": [
+        "PON_CONTRACT_FIXTURE_UNEXPECTED",
+        "PON_CONTRACT_INVALID",
+        "PON_DATABASE_INVALID",
+        "PON_INPUT_INVALID",
+        "PON_INTERNAL_ERROR",
+        "PON_LEGACY_SCHEMA_UNSUPPORTED",
+        "PON_MIGRATION_MISMATCH",
+        "PON_OUTPUT_EXISTS",
+        "PON_PATH_CONFLICT",
+        "PON_PATH_NOT_FOUND",
+        "PON_PRODUCTION_MUTATION_FORBIDDEN",
+        "PON_RECONCILIATION_AMBIGUOUS",
+        "PON_RECONCILIATION_DUPLICATE",
+        "PON_RECONCILIATION_HASH_MISMATCH",
+        "PON_RECONCILIATION_ORPHAN",
+        "PON_SNAPSHOT_INTEGRITY_FAILURE",
+        "PON_SNAPSHOT_SOURCE_CHANGED"
+      ]
+    },
+    "details": {
+      "type": "object"
+    },
+    "message": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "severity": {
+      "enum": [
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "CRITICAL"
+      ]
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "code",
+    "message",
+    "severity",
+    "retryable",
+    "details"
+  ],
+  "title": "Post Office Next diagnostic",
+  "type": "object"
+}

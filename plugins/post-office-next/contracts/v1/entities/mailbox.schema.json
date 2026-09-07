@@ -1,0 +1,66 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/mailbox.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "createdEventId": "PON-EVENT-001",
+      "domain": "PON",
+      "endpointId": "PON-ENDPOINT-001",
+      "generation": 1,
+      "id": "PON-MAILBOX-001",
+      "schemaVersion": "1",
+      "status": "ACTIVE"
+    }
+  ],
+  "properties": {
+    "createdEventId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "domain": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "endpointId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "generation": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "status": {
+      "enum": [
+        "PROVISIONAL",
+        "ACTIVE",
+        "RETIRED",
+        "REVOKED"
+      ],
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "generation",
+    "domain",
+    "endpointId",
+    "status",
+    "createdEventId"
+  ],
+  "title": "mailbox",
+  "type": "object"
+}

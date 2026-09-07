@@ -1,0 +1,396 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/operations/changeSet.decide.result.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "afterRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "aggregateVersion": 0,
+      "beforeRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "createdIds": [],
+      "eventId": "PON-EVENT-001",
+      "ok": true,
+      "operation": "changeSet.decide",
+      "receipt": {
+        "mutationEventId": "PON-EVENT-001",
+        "receiptId": "PON-RECEIPT-001",
+        "recordedAt": "2026-09-04T12:00:00Z",
+        "requestSha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "stateRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "requestId": "PON-REQUEST-001",
+      "schemaVersion": "1",
+      "warnings": []
+    },
+    {
+      "diagnostic": {
+        "code": "PON_INPUT_INVALID",
+        "details": {},
+        "message": "Example failure",
+        "retryable": false,
+        "schemaVersion": "1",
+        "severity": "ERROR"
+      },
+      "ok": false,
+      "operation": "changeSet.decide",
+      "requestId": "PON-REQUEST-001",
+      "schemaVersion": "1"
+    }
+  ],
+  "oneOf": [
+    {
+      "additionalProperties": true,
+      "properties": {
+        "aggregateVersion": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "eventId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "ok": {
+          "const": true
+        }
+      },
+      "required": [
+        "ok",
+        "beforeRoot",
+        "afterRoot",
+        "createdIds",
+        "warnings",
+        "receipt",
+        "eventId",
+        "aggregateVersion"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "eventId"
+            ]
+          },
+          {
+            "required": [
+              "beforeRoot"
+            ]
+          },
+          {
+            "required": [
+              "afterRoot"
+            ]
+          },
+          {
+            "required": [
+              "aggregateVersion"
+            ]
+          },
+          {
+            "required": [
+              "createdIds"
+            ]
+          },
+          {
+            "required": [
+              "receipt"
+            ]
+          }
+        ]
+      },
+      "properties": {
+        "diagnostic": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "PON_CONTRACT_FIXTURE_UNEXPECTED",
+                "PON_CONTRACT_INVALID",
+                "PON_DATABASE_INVALID",
+                "PON_INPUT_INVALID",
+                "PON_INTERNAL_ERROR",
+                "PON_LEGACY_SCHEMA_UNSUPPORTED",
+                "PON_MIGRATION_MISMATCH",
+                "PON_OUTPUT_EXISTS",
+                "PON_PATH_CONFLICT",
+                "PON_PATH_NOT_FOUND",
+                "PON_PRODUCTION_MUTATION_FORBIDDEN",
+                "PON_RECONCILIATION_AMBIGUOUS",
+                "PON_RECONCILIATION_DUPLICATE",
+                "PON_RECONCILIATION_HASH_MISMATCH",
+                "PON_RECONCILIATION_ORPHAN",
+                "PON_SNAPSHOT_INTEGRITY_FAILURE",
+                "PON_SNAPSHOT_SOURCE_CHANGED"
+              ],
+              "minLength": 1,
+              "type": "string"
+            },
+            "details": {
+              "type": "object"
+            },
+            "message": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "schemaVersion": {
+              "const": "1"
+            },
+            "severity": {
+              "enum": [
+                "INFO",
+                "WARNING",
+                "ERROR",
+                "CRITICAL"
+              ],
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "code",
+            "message",
+            "severity",
+            "retryable",
+            "details"
+          ],
+          "type": "object"
+        },
+        "ok": {
+          "const": false
+        }
+      },
+      "required": [
+        "ok",
+        "diagnostic"
+      ],
+      "type": "object"
+    }
+  ],
+  "properties": {
+    "afterRoot": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "aggregateVersion": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "beforeRoot": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "createdIds": {
+      "items": {
+        "minLength": 1,
+        "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "diagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "PON_CONTRACT_FIXTURE_UNEXPECTED",
+            "PON_CONTRACT_INVALID",
+            "PON_DATABASE_INVALID",
+            "PON_INPUT_INVALID",
+            "PON_INTERNAL_ERROR",
+            "PON_LEGACY_SCHEMA_UNSUPPORTED",
+            "PON_MIGRATION_MISMATCH",
+            "PON_OUTPUT_EXISTS",
+            "PON_PATH_CONFLICT",
+            "PON_PATH_NOT_FOUND",
+            "PON_PRODUCTION_MUTATION_FORBIDDEN",
+            "PON_RECONCILIATION_AMBIGUOUS",
+            "PON_RECONCILIATION_DUPLICATE",
+            "PON_RECONCILIATION_HASH_MISMATCH",
+            "PON_RECONCILIATION_ORPHAN",
+            "PON_SNAPSHOT_INTEGRITY_FAILURE",
+            "PON_SNAPSHOT_SOURCE_CHANGED"
+          ],
+          "minLength": 1,
+          "type": "string"
+        },
+        "details": {
+          "type": "object"
+        },
+        "message": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "schemaVersion": {
+          "const": "1"
+        },
+        "severity": {
+          "enum": [
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ],
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "code",
+        "message",
+        "severity",
+        "retryable",
+        "details"
+      ],
+      "type": "object"
+    },
+    "eventId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "operation": {
+      "const": "changeSet.decide"
+    },
+    "receipt": {
+      "additionalProperties": false,
+      "properties": {
+        "mutationEventId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "receiptId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "recordedAt": {
+          "minLength": 1,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+          "type": "string"
+        },
+        "requestSha256": {
+          "minLength": 1,
+          "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "stateRoot": {
+          "minLength": 1,
+          "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "receiptId",
+        "requestSha256",
+        "recordedAt",
+        "stateRoot",
+        "mutationEventId"
+      ],
+      "type": "object"
+    },
+    "requestId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "warnings": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "PON_CONTRACT_FIXTURE_UNEXPECTED",
+              "PON_CONTRACT_INVALID",
+              "PON_DATABASE_INVALID",
+              "PON_INPUT_INVALID",
+              "PON_INTERNAL_ERROR",
+              "PON_LEGACY_SCHEMA_UNSUPPORTED",
+              "PON_MIGRATION_MISMATCH",
+              "PON_OUTPUT_EXISTS",
+              "PON_PATH_CONFLICT",
+              "PON_PATH_NOT_FOUND",
+              "PON_PRODUCTION_MUTATION_FORBIDDEN",
+              "PON_RECONCILIATION_AMBIGUOUS",
+              "PON_RECONCILIATION_DUPLICATE",
+              "PON_RECONCILIATION_HASH_MISMATCH",
+              "PON_RECONCILIATION_ORPHAN",
+              "PON_SNAPSHOT_INTEGRITY_FAILURE",
+              "PON_SNAPSHOT_SOURCE_CHANGED"
+            ],
+            "minLength": 1,
+            "type": "string"
+          },
+          "details": {
+            "type": "object"
+          },
+          "message": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "schemaVersion": {
+            "const": "1"
+          },
+          "severity": {
+            "enum": [
+              "INFO",
+              "WARNING",
+              "ERROR",
+              "CRITICAL"
+            ],
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "code",
+          "message",
+          "severity",
+          "retryable",
+          "details"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "requestId",
+    "operation",
+    "ok"
+  ],
+  "title": "changeSet.decide result",
+  "type": "object",
+  "x-contractStatus": "CONTRACT_ONLY",
+  "x-invariants": [
+    "For mutating success, receipt.mutationEventId equals eventId"
+  ],
+  "x-mutates": true
+}

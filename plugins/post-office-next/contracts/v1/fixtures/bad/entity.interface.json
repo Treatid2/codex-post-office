@@ -1,0 +1,11 @@
+{
+  "consumerIds": [],
+  "humanGuide": "docs/interface.md",
+  "id": "PON-INTERFACE-001",
+  "providerIds": [
+    "PON-PACKAGE-001"
+  ],
+  "status": "PROVISIONAL",
+  "stewardId": "PON-PACKAGE-001",
+  "version": "0.1.0"
+}

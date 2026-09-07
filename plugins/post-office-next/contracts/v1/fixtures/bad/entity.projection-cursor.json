@@ -1,0 +1,10 @@
+{
+  "errors": [],
+  "id": "PON-PROJECTION-001",
+  "lastSuccessfulAt": "2026-09-04T12:00:00Z",
+  "projectionKind": "DATABASE_VIEW",
+  "projectionRoot": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "sourceEventCursor": "PON-EVENT-001",
+  "sourceRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "stale": false
+}

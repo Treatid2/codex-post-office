@@ -1,0 +1,11 @@
+{
+  "createdEventId": "PON-EVENT-001",
+  "id": "PON-ATTENTION-001",
+  "owningRole": "browser-manager",
+  "reasonCode": "PROJECTION_STALE",
+  "relatedEntityId": "PON-PROJECTION-001",
+  "relatedEntityType": "ProjectionCursor",
+  "schemaVersion": "1",
+  "severity": "WARNING",
+  "state": "OPEN"
+}

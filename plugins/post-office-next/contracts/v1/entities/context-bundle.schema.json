@@ -1,0 +1,100 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/context-bundle.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "contentRoot": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "excludedSources": [
+        "caller-secrets"
+      ],
+      "id": "PON-CONTEXT-001",
+      "includedSources": [
+        {
+          "access": "READ_ONLY",
+          "reference": "contracts/task.json",
+          "sha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        }
+      ],
+      "outputBundleId": "PON-BUNDLE-001",
+      "schemaVersion": "1",
+      "taskId": "PON-TASK-001"
+    }
+  ],
+  "properties": {
+    "contentRoot": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "excludedSources": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "includedSources": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "access": {
+            "enum": [
+              "READ_ONLY",
+              "MUTABLE"
+            ],
+            "minLength": 1,
+            "type": "string"
+          },
+          "reference": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sha256": {
+            "minLength": 1,
+            "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference",
+          "sha256",
+          "access"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "outputBundleId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "taskId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "taskId",
+    "includedSources",
+    "excludedSources",
+    "contentRoot",
+    "outputBundleId"
+  ],
+  "title": "context-bundle",
+  "type": "object"
+}

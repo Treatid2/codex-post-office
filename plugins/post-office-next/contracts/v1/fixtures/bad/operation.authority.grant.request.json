@@ -1,0 +1,35 @@
+{
+  "actor": {
+    "id": "PON-ACTOR-001",
+    "kind": "HUMAN",
+    "role": "author"
+  },
+  "aggregate": {
+    "expectedVersion": 0,
+    "id": "PON-AGGREGATE-001",
+    "type": "Example"
+  },
+  "authority": {
+    "capabilityId": "PON-CAPABILITY-001",
+    "exactAuthorActionId": "PON-AUTHOR-ACTION-001"
+  },
+  "operation": "authority.grant",
+  "parameters": {
+    "grant": {
+      "allowedOperations": [
+        "example"
+      ],
+      "classification": "ONE_SHOT",
+      "grantorId": "PON-EXAMPLE-001",
+      "rationale": "example",
+      "recipientId": "PON-EXAMPLE-001",
+      "scope": {
+        "projectIds": [
+          "PON-EXAMPLE-001"
+        ]
+      },
+      "sourceDecisionId": "PON-EXAMPLE-001"
+    }
+  },
+  "schemaVersion": "1"
+}

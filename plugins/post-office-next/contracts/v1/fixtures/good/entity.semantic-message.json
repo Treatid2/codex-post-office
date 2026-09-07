@@ -1,0 +1,16 @@
+{
+  "authorityBasisId": "PON-GRANT-001",
+  "completionCriteria": "Return evidence",
+  "contentRoot": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "domain": "PON",
+  "id": "PON-MSG-001",
+  "messageType": "HANDOFF",
+  "recipientGeneration": 1,
+  "recipientMailboxId": "PON-MAILBOX-002",
+  "relatedMessageIds": [],
+  "requestedAction": "Run bounded work",
+  "schemaVersion": "1",
+  "semanticCycleId": "PON-CYCLE-001",
+  "senderEndpointId": "PON-ENDPOINT-001",
+  "state": "REGISTERED"
+}

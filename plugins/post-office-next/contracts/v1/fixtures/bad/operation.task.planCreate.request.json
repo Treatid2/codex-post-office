@@ -1,0 +1,17 @@
+{
+  "actor": {
+    "id": "PON-ACTOR-001",
+    "kind": "HUMAN",
+    "role": "browser"
+  },
+  "authority": {
+    "capabilityId": "PON-CAPABILITY-001"
+  },
+  "operation": "task.planCreate",
+  "parameters": {
+    "objective": "example",
+    "projectId": "PON-EXAMPLE-001",
+    "taskKind": "example"
+  },
+  "schemaVersion": "1"
+}

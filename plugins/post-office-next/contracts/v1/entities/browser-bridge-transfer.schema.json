@@ -1,0 +1,107 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/browser-bridge-transfer.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "accessCount": 1,
+      "createdAt": "2026-09-04T12:00:00Z",
+      "direction": "TO_BROWSER",
+      "durableStorageCopyId": "PON-COPY-001",
+      "expectedSha256": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "id": "PON-BRIDGE-001",
+      "provider": "GOOGLE_DRIVE",
+      "remoteObjectId": "drive-object-001",
+      "schemaVersion": "1",
+      "state": "PENDING",
+      "transportAttemptId": "PON-TRANSPORT-001"
+    }
+  ],
+  "properties": {
+    "accessCount": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "createdAt": {
+      "minLength": 1,
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+      "type": "string"
+    },
+    "direction": {
+      "enum": [
+        "TO_BROWSER",
+        "FROM_BROWSER"
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "durableStorageCopyId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "expectedSha256": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "observedSha256": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "provider": {
+      "const": "GOOGLE_DRIVE"
+    },
+    "remoteObjectId": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "state": {
+      "enum": [
+        "PENDING",
+        "TRANSFERRED",
+        "INGESTED",
+        "RECEIPTED",
+        "CLEANUP_DUE",
+        "CLEANED",
+        "FAILED"
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "terminalAt": {
+      "minLength": 1,
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+      "type": "string"
+    },
+    "transportAttemptId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "transportAttemptId",
+    "direction",
+    "provider",
+    "remoteObjectId",
+    "expectedSha256",
+    "durableStorageCopyId",
+    "state",
+    "accessCount",
+    "createdAt"
+  ],
+  "title": "browser-bridge-transfer",
+  "type": "object"
+}

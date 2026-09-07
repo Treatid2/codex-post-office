@@ -1,0 +1,15 @@
+{
+  "actor": {
+    "id": "PON-ACTOR-001",
+    "kind": "HUMAN",
+    "role": "browser-or-courier"
+  },
+  "authority": {
+    "capabilityId": "PON-CAPABILITY-001"
+  },
+  "operation": "hub.reconcile.preview",
+  "parameters": {
+    "snapshotRoot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "schemaVersion": "1"
+}

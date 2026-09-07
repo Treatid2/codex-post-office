@@ -1,0 +1,17 @@
+{
+  "contentRoot": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "excludedSources": [
+    "caller-secrets"
+  ],
+  "id": "PON-CONTEXT-001",
+  "includedSources": [
+    {
+      "access": "READ_ONLY",
+      "reference": "contracts/task.json",
+      "sha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  ],
+  "outputBundleId": "PON-BUNDLE-001",
+  "schemaVersion": "1",
+  "taskId": "PON-TASK-001"
+}

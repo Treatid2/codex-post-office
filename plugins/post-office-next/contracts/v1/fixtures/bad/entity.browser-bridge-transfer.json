@@ -1,0 +1,12 @@
+{
+  "accessCount": 1,
+  "createdAt": "2026-09-04T12:00:00Z",
+  "direction": "TO_BROWSER",
+  "durableStorageCopyId": "PON-COPY-001",
+  "expectedSha256": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+  "id": "PON-BRIDGE-001",
+  "provider": "GOOGLE_DRIVE",
+  "remoteObjectId": "drive-object-001",
+  "state": "PENDING",
+  "transportAttemptId": "PON-TRANSPORT-001"
+}

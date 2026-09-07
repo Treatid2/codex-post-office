@@ -1,0 +1,11 @@
+{
+  "displayName": "Example package",
+  "id": "PON-PACKAGE-001",
+  "owningProjectId": "PON-PROJECT-001",
+  "providedInterfaceIds": [],
+  "requiredInterfaceIds": [],
+  "schemaVersion": "1",
+  "status": "PROPOSED",
+  "taskIds": [],
+  "versions": []
+}

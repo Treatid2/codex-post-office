@@ -1,0 +1,34 @@
+{
+  "actor": {
+    "id": "PON-ACTOR-001",
+    "kind": "HUMAN",
+    "role": "interface-steward-or-browser"
+  },
+  "aggregate": {
+    "expectedVersion": 0,
+    "id": "PON-AGGREGATE-001",
+    "type": "Example"
+  },
+  "authority": {
+    "authorityGrantId": "PON-GRANT-001",
+    "capabilityId": "PON-CAPABILITY-001"
+  },
+  "operation": "interface.register",
+  "parameters": {
+    "interface": {
+      "consumerIds": [
+        "PON-EXAMPLE-001"
+      ],
+      "humanGuide": "example",
+      "id": "PON-EXAMPLE-001",
+      "providerIds": [
+        "PON-EXAMPLE-001"
+      ],
+      "status": "EXPERIMENTAL",
+      "stewardId": "PON-EXAMPLE-001",
+      "version": "1.0.0"
+    }
+  },
+  "requestId": "PON-REQUEST-001",
+  "schemaVersion": "1"
+}

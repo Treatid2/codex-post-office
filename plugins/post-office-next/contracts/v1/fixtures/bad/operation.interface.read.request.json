@@ -1,0 +1,15 @@
+{
+  "actor": {
+    "id": "PON-ACTOR-001",
+    "kind": "HUMAN",
+    "role": "authenticated-reader"
+  },
+  "authority": {
+    "capabilityId": "PON-CAPABILITY-001"
+  },
+  "operation": "interface.read",
+  "parameters": {
+    "interfaceId": "PON-EXAMPLE-001"
+  },
+  "schemaVersion": "1"
+}

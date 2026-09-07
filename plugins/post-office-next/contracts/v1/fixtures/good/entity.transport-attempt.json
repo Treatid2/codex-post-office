@@ -1,0 +1,12 @@
+{
+  "attemptNumber": 1,
+  "bundleId": "PON-BUNDLE-001",
+  "bundleSha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "destination": "mailbox:PON-MAILBOX-002:1",
+  "id": "PON-TRANSPORT-001",
+  "receiptEvidence": [],
+  "schemaVersion": "1",
+  "semanticMessageId": "PON-MSG-001",
+  "source": "local-cas",
+  "state": "PENDING"
+}

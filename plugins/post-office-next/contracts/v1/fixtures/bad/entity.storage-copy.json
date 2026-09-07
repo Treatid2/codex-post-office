@@ -1,0 +1,10 @@
+{
+  "contentSha256": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+  "id": "PON-COPY-001",
+  "location": "payloads/66/object",
+  "locationKind": "LOCAL_CAS",
+  "retentionClass": "AUTHORITATIVE",
+  "sizeBytes": 10,
+  "verificationLevel": "SHA256_READBACK",
+  "verifiedAt": "2026-09-04T12:00:00Z"
+}

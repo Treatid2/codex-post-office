@@ -1,0 +1,168 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/hub-event.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "actorId": "PON-ACTOR-001",
+      "afterStateRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "aggregateId": "PON-TASK-001",
+      "aggregateType": "Task",
+      "aggregateVersion": 1,
+      "authority": {
+        "authorityGrantId": "PON-GRANT-001",
+        "capabilityId": "PON-CAPABILITY-001"
+      },
+      "beforeStateRoot": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "eventSha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "id": "PON-EVENT-001",
+      "operation": "task.create",
+      "payloadSha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "result": {
+        "created": true
+      },
+      "schemaVersion": "1",
+      "timestamp": "2026-09-04T12:00:00Z"
+    }
+  ],
+  "properties": {
+    "actorId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "afterStateRoot": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "aggregateId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "aggregateType": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "aggregateVersion": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "authority": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "authorityGrantId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "capabilityId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "exactAuthorActionId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "capabilityId",
+            "authorityGrantId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "authorityGrantId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "capabilityId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "exactAuthorActionId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "capabilityId",
+            "exactAuthorActionId"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "beforeStateRoot": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "eventSha256": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "operation": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "payloadSha256": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "previousEventSha256": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "result": {
+      "additionalProperties": true,
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "timestamp": {
+      "minLength": 1,
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "timestamp",
+    "actorId",
+    "operation",
+    "authority",
+    "aggregateType",
+    "aggregateId",
+    "aggregateVersion",
+    "beforeStateRoot",
+    "afterStateRoot",
+    "result",
+    "payloadSha256",
+    "eventSha256"
+  ],
+  "title": "hub-event",
+  "type": "object"
+}

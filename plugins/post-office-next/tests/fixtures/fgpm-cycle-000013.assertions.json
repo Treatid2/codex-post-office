@@ -1,0 +1,29 @@
+{
+  "assertions": [
+    {
+      "authorityKind": "BROWSER_DESIGN_GUIDANCE",
+      "entityId": "FGPM-CYCLE-000013",
+      "entityType": "SemanticCycle",
+      "fact": "state",
+      "source": {
+        "path": "CODEX-COMMS_HUB_Desired-Functionality-Guidance_v01.md",
+        "sha256": "96c32bbd35e10fbc54efa69920052f3b8d329f49c05cb638aca102dd00b07152"
+      },
+      "value": "CLOSED",
+      "verified": true
+    },
+    {
+      "authorityKind": "RETAINED_RESPONSE_ASSERTION",
+      "entityId": "FGPM-CYCLE-000013",
+      "entityType": "SemanticCycle",
+      "fact": "state",
+      "source": {
+        "path": "CODEX-COMMS_HUB_Guidance-Evaluation_2026-09-04_v01.md",
+        "sha256": "2a39c0ba4f4ce09ee08796d6e1e2f1bf589f5c5be5f7a9b31f262e3b100d0829"
+      },
+      "value": "OPEN",
+      "verified": true
+    }
+  ],
+  "schemaVersion": "1"
+}

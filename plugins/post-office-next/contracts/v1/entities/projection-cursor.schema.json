@@ -1,0 +1,76 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/projection-cursor.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "errors": [],
+      "id": "PON-PROJECTION-001",
+      "lastSuccessfulAt": "2026-09-04T12:00:00Z",
+      "projectionKind": "DATABASE_VIEW",
+      "projectionRoot": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "schemaVersion": "1",
+      "sourceEventCursor": "PON-EVENT-001",
+      "sourceRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "stale": false
+    }
+  ],
+  "properties": {
+    "errors": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "lastSuccessfulAt": {
+      "minLength": 1,
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+      "type": "string"
+    },
+    "projectionKind": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "projectionRoot": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "sourceEventCursor": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "sourceRoot": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "stale": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "projectionKind",
+    "sourceEventCursor",
+    "sourceRoot",
+    "projectionRoot",
+    "lastSuccessfulAt",
+    "stale",
+    "errors"
+  ],
+  "title": "projection-cursor",
+  "type": "object"
+}

@@ -1,0 +1,31 @@
+{
+  "name": "playwright-browser-bridge",
+  "version": "0.1.0",
+  "description": "Singleton, loopback-only Playwright MCP companion for durable review-browser access.",
+  "author": {
+    "name": "Treatid2",
+    "url": "https://github.com/Treatid2"
+  },
+  "homepage": "https://github.com/Treatid2/codex-post-office/tree/main/plugins/playwright-browser-bridge",
+  "repository": "https://github.com/Treatid2/codex-post-office",
+  "license": "MPL-2.0",
+  "keywords": ["codex", "playwright", "browser", "mcp", "chrome"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Playwright Browser Bridge",
+    "shortDescription": "Run the dedicated Post Office review browser.",
+    "longDescription": "A Post Office companion that owns one pinned Playwright MCP service and a dedicated persistent Chrome profile. Review callers use the narrow automatic-review interface and never receive raw browser or CDP authority.",
+    "developerName": "Treatid2",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Treatid2/codex-post-office",
+    "defaultPrompt": [
+      "Check the Post Office browser bridge.",
+      "Start the dedicated review browser.",
+      "Retire a review browser safely."
+    ]
+  }
+}

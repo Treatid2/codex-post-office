@@ -1,0 +1,143 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/capability-request.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "acceptanceFixtureRoot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fulfilmentEvidence": [],
+      "id": "PON-REQUEST-001",
+      "linkedTaskIds": [],
+      "priority": "NORMAL",
+      "problem": "Missing capability",
+      "requestingProjectId": "PON-PROJECT-001",
+      "requiredBehaviour": [
+        "Deterministic output"
+      ],
+      "schemaVersion": "1",
+      "status": "OPEN"
+    }
+  ],
+  "properties": {
+    "acceptanceFixtureRoot": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "fulfilmentEvidence": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reference": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sha256": {
+            "minLength": 1,
+            "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "reference"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "linkedTaskIds": {
+      "items": {
+        "minLength": 1,
+        "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "priority": {
+      "enum": [
+        "LOW",
+        "NORMAL",
+        "HIGH",
+        "URGENT"
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "problem": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "requestingProjectId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "requestingTaskId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "requiredBehaviour": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "status": {
+      "enum": [
+        "OPEN",
+        "TRIAGED",
+        "MATCH_EXISTING",
+        "CHANGE_EXISTING",
+        "ADAPTER_REQUIRED",
+        "NEW_PACKAGE_REQUIRED",
+        "FGPM_CORE_ISSUE",
+        "HUB_ISSUE",
+        "DEFERRED",
+        "REJECTED",
+        "IN_PROGRESS",
+        "FULFILLED",
+        "PARTIAL",
+        "WITHDRAWN"
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "triageDecisionId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "requestingProjectId",
+    "problem",
+    "requiredBehaviour",
+    "acceptanceFixtureRoot",
+    "priority",
+    "status",
+    "linkedTaskIds",
+    "fulfilmentEvidence"
+  ],
+  "title": "capability-request",
+  "type": "object"
+}

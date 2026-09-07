@@ -1,0 +1,8 @@
+{
+  "createdEventId": "PON-EVENT-001",
+  "domain": "PON",
+  "endpointId": "PON-ENDPOINT-001",
+  "generation": 1,
+  "id": "PON-MAILBOX-001",
+  "status": "ACTIVE"
+}

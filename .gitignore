@@ -1,0 +1,52 @@
+# Runtime state and credentials
+*.sqlite
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.db
+*.token
+caller-secrets/
+state/
+captures/
+snapshots/
+evidence/
+payloads/
+
+# Review transport and generated archives
+*.zip
+*_RESULT.md
+PACKAGE_MANIFEST.json
+
+# Python and tool caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+node_modules/
+npm-debug.log*
+.coverage
+coverage/
+
+# Local configuration and logs
+.env
+.env.*
+!*.example
+runtime-lock.json
+*.log
+chrome-profile/
+browser-data/
+
+# Generated build/output trees
+build/
+bin/
+obj/
+out/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

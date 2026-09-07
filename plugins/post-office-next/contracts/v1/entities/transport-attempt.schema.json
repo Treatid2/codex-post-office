@@ -1,0 +1,114 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/transport-attempt.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "attemptNumber": 1,
+      "bundleId": "PON-BUNDLE-001",
+      "bundleSha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "destination": "mailbox:PON-MAILBOX-002:1",
+      "id": "PON-TRANSPORT-001",
+      "receiptEvidence": [],
+      "schemaVersion": "1",
+      "semanticMessageId": "PON-MSG-001",
+      "source": "local-cas",
+      "state": "PENDING"
+    }
+  ],
+  "properties": {
+    "attemptNumber": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "bundleId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "bundleSha256": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "destination": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "receiptEvidence": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reference": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sha256": {
+            "minLength": 1,
+            "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "reference"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "semanticMessageId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "source": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "PENDING",
+        "COLLECTED",
+        "VALIDATED",
+        "STORED",
+        "DELIVERED",
+        "RECEIPTED",
+        "FAILED_RETRYABLE",
+        "FAILED_FINAL",
+        "QUARANTINED",
+        "TOMBSTONED_DUPLICATE",
+        "CANCELLED"
+      ],
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "semanticMessageId",
+    "bundleId",
+    "bundleSha256",
+    "source",
+    "destination",
+    "state",
+    "attemptNumber",
+    "receiptEvidence"
+  ],
+  "title": "transport-attempt",
+  "type": "object"
+}

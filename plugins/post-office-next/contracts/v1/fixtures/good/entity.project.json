@@ -1,0 +1,25 @@
+{
+  "aggregateRoot": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+  "aggregateVersion": 1,
+  "authorityIds": [
+    "PON-GRANT-001"
+  ],
+  "code": "PON",
+  "createdEventId": "PON-EVENT-001",
+  "displayName": "Post Office Next",
+  "id": "PON-PROJECT-001",
+  "kind": "INFRASTRUCTURE",
+  "mailDomains": [
+    "PON"
+  ],
+  "registers": [
+    "PON-REGISTER-001"
+  ],
+  "roots": {
+    "localBackup": "L:/Codex/backups/post-office-next",
+    "localCas": "L:/Codex/state/post-office-next/cas",
+    "localProject": "L:/Codex/projects/example"
+  },
+  "schemaVersion": "1",
+  "status": "ACTIVE"
+}

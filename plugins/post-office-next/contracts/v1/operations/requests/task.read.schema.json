@@ -1,0 +1,118 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/operations/task.read.request.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "actor": {
+        "id": "PON-ACTOR-001",
+        "kind": "HUMAN",
+        "role": "authenticated-reader"
+      },
+      "authority": {
+        "capabilityId": "PON-CAPABILITY-001"
+      },
+      "operation": "task.read",
+      "parameters": {
+        "taskId": "PON-EXAMPLE-001"
+      },
+      "requestId": "PON-REQUEST-001",
+      "schemaVersion": "1"
+    }
+  ],
+  "properties": {
+    "actor": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "HUMAN",
+            "BROWSER",
+            "COURIER",
+            "ENDPOINT",
+            "SYSTEM"
+          ],
+          "minLength": 1,
+          "type": "string"
+        },
+        "role": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "role"
+      ],
+      "type": "object"
+    },
+    "authority": {
+      "additionalProperties": false,
+      "properties": {
+        "authorityGrantId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "capabilityId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "exactAuthorActionId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "capabilityId"
+      ],
+      "type": "object"
+    },
+    "operation": {
+      "const": "task.read"
+    },
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "taskId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "taskId"
+      ],
+      "type": "object"
+    },
+    "requestId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "operation",
+    "requestId",
+    "actor",
+    "authority",
+    "parameters"
+  ],
+  "title": "task.read request",
+  "type": "object",
+  "x-contractStatus": "CONTRACT_ONLY",
+  "x-minimumAuthority": "authenticated-reader",
+  "x-mutates": false
+}

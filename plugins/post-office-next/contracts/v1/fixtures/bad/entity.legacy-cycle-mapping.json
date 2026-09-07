@@ -1,0 +1,10 @@
+{
+  "classification": "AMBIGUOUS",
+  "decision": "REVIEW_REQUIRED",
+  "evidence": [],
+  "id": "PON-MAPPING-001",
+  "legacyCycleId": "LEGACY-CYCLE-001",
+  "transportMessageIds": [
+    "LEGACY-MSG-001"
+  ]
+}

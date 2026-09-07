@@ -1,0 +1,90 @@
+{
+  "diagnostics": [
+    {
+      "code": "PON_CONTRACT_FIXTURE_UNEXPECTED",
+      "retryable": false,
+      "severity": "ERROR"
+    },
+    {
+      "code": "PON_CONTRACT_INVALID",
+      "retryable": false,
+      "severity": "ERROR"
+    },
+    {
+      "code": "PON_DATABASE_INVALID",
+      "retryable": false,
+      "severity": "ERROR"
+    },
+    {
+      "code": "PON_INPUT_INVALID",
+      "retryable": false,
+      "severity": "ERROR"
+    },
+    {
+      "code": "PON_INTERNAL_ERROR",
+      "retryable": false,
+      "severity": "ERROR"
+    },
+    {
+      "code": "PON_LEGACY_SCHEMA_UNSUPPORTED",
+      "retryable": false,
+      "severity": "ERROR"
+    },
+    {
+      "code": "PON_MIGRATION_MISMATCH",
+      "retryable": false,
+      "severity": "ERROR"
+    },
+    {
+      "code": "PON_OUTPUT_EXISTS",
+      "retryable": false,
+      "severity": "ERROR"
+    },
+    {
+      "code": "PON_PATH_CONFLICT",
+      "retryable": false,
+      "severity": "ERROR"
+    },
+    {
+      "code": "PON_PATH_NOT_FOUND",
+      "retryable": false,
+      "severity": "ERROR"
+    },
+    {
+      "code": "PON_PRODUCTION_MUTATION_FORBIDDEN",
+      "retryable": false,
+      "severity": "ERROR"
+    },
+    {
+      "code": "PON_RECONCILIATION_AMBIGUOUS",
+      "retryable": false,
+      "severity": "WARNING"
+    },
+    {
+      "code": "PON_RECONCILIATION_DUPLICATE",
+      "retryable": false,
+      "severity": "WARNING"
+    },
+    {
+      "code": "PON_RECONCILIATION_HASH_MISMATCH",
+      "retryable": false,
+      "severity": "ERROR"
+    },
+    {
+      "code": "PON_RECONCILIATION_ORPHAN",
+      "retryable": false,
+      "severity": "WARNING"
+    },
+    {
+      "code": "PON_SNAPSHOT_INTEGRITY_FAILURE",
+      "retryable": false,
+      "severity": "ERROR"
+    },
+    {
+      "code": "PON_SNAPSHOT_SOURCE_CHANGED",
+      "retryable": true,
+      "severity": "ERROR"
+    }
+  ],
+  "schemaVersion": "1"
+}

@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: plugins/playwright-browser-bridge/package-lock.json
+
+      - name: Validate release metadata
+        run: python -B scripts/validate_release.py
+
+      - name: Validate Post Office contracts
+        run: pwsh -NoProfile -File plugins/post-office-next/scripts/Invoke-PostOfficeNext.ps1 contracts validate
+
+      - name: Test Post Office Next
+        run: python -B -m unittest discover -s plugins/post-office-next/tests -p "test_*.py"
+
+      - name: Test automatic review client
+        run: python -B -m unittest discover -s plugins/automatic-code-review/tests -p "test_*.py"
+
+      - name: Validate PowerShell syntax
+        shell: pwsh
+        run: |
+          $errors = @()
+          Get-ChildItem -Recurse -Filter *.ps1 | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            $errors += $parseErrors
+          }
+          if ($errors.Count) { $errors | Format-List; exit 1 }
+
+      - name: Install pinned browser bridge
+        working-directory: plugins/playwright-browser-bridge
+        run: npm ci --ignore-scripts
+
+      - name: Validate browser bridge JavaScript
+        run: |
+          node --check plugins/playwright-browser-bridge/scripts/playwright_bridge_probe.mjs
+          node --check plugins/playwright-browser-bridge/scripts/playwright_mcp_broker.mjs

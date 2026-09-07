@@ -1,0 +1,26 @@
+{
+  "actor": {
+    "id": "PON-ACTOR-001",
+    "kind": "HUMAN",
+    "role": "browser-after-integration"
+  },
+  "aggregate": {
+    "expectedVersion": 0,
+    "id": "PON-AGGREGATE-001",
+    "type": "Example"
+  },
+  "authority": {
+    "authorityGrantId": "PON-GRANT-001",
+    "capabilityId": "PON-CAPABILITY-001"
+  },
+  "operation": "capabilityRequest.fulfil",
+  "parameters": {
+    "capabilityRequestId": "PON-EXAMPLE-001",
+    "evidenceRoots": [
+      "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    "outcome": "FULFILLED"
+  },
+  "requestId": "PON-REQUEST-001",
+  "schemaVersion": "1"
+}

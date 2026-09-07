@@ -1,0 +1,155 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/project.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "aggregateRoot": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "aggregateVersion": 1,
+      "authorityIds": [
+        "PON-GRANT-001"
+      ],
+      "code": "PON",
+      "createdEventId": "PON-EVENT-001",
+      "displayName": "Post Office Next",
+      "id": "PON-PROJECT-001",
+      "kind": "INFRASTRUCTURE",
+      "mailDomains": [
+        "PON"
+      ],
+      "registers": [
+        "PON-REGISTER-001"
+      ],
+      "roots": {
+        "localBackup": "L:/Codex/backups/post-office-next",
+        "localCas": "L:/Codex/state/post-office-next/cas",
+        "localProject": "L:/Codex/projects/example"
+      },
+      "schemaVersion": "1",
+      "status": "ACTIVE"
+    }
+  ],
+  "properties": {
+    "aggregateRoot": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "aggregateVersion": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "authorityIds": {
+      "items": {
+        "minLength": 1,
+        "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "code": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "createdEventId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "displayName": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "INTEGRATION",
+        "PACKAGE_DEVELOPMENT",
+        "INFRASTRUCTURE",
+        "RESEARCH",
+        "EVALUATION"
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "mailDomains": {
+      "items": {
+        "minLength": 1,
+        "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "registers": {
+      "items": {
+        "minLength": 1,
+        "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "roots": {
+      "additionalProperties": false,
+      "properties": {
+        "localBackup": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "localCas": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "localProject": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "localProject",
+        "localCas",
+        "localBackup"
+      ],
+      "type": "object"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "status": {
+      "enum": [
+        "PROPOSED",
+        "PROVISIONING",
+        "ACTIVE",
+        "PAUSED",
+        "PROVISIONING_FAILED",
+        "ARCHIVED"
+      ],
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "code",
+    "displayName",
+    "kind",
+    "status",
+    "authorityIds",
+    "roots",
+    "registers",
+    "mailDomains",
+    "createdEventId",
+    "aggregateVersion",
+    "aggregateRoot"
+  ],
+  "title": "project",
+  "type": "object"
+}

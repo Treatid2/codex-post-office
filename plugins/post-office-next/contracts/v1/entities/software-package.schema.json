@@ -1,0 +1,125 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/software-package.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "displayName": "Example package",
+      "id": "PON-PACKAGE-001",
+      "owningProjectId": "PON-PROJECT-001",
+      "providedInterfaceIds": [],
+      "requiredInterfaceIds": [],
+      "schemaVersion": "1",
+      "status": "PROPOSED",
+      "taskIds": [],
+      "versions": []
+    }
+  ],
+  "properties": {
+    "displayName": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "licence": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "owningProjectId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "providedInterfaceIds": {
+      "items": {
+        "minLength": 1,
+        "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "requiredInterfaceIds": {
+      "items": {
+        "minLength": 1,
+        "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "sourceLocation": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "PROPOSED",
+        "IN_DEVELOPMENT",
+        "CANDIDATE",
+        "ACCEPTED",
+        "DEPRECATED",
+        "RETIRED"
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "taskIds": {
+      "items": {
+        "minLength": 1,
+        "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "versions": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "contentRoot": {
+            "minLength": 1,
+            "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "state": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "version": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "contentRoot",
+          "state"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "displayName",
+    "owningProjectId",
+    "status",
+    "versions",
+    "providedInterfaceIds",
+    "requiredInterfaceIds",
+    "taskIds"
+  ],
+  "title": "software-package",
+  "type": "object"
+}

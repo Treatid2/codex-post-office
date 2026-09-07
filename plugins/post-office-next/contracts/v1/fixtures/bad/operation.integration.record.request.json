@@ -1,0 +1,34 @@
+{
+  "actor": {
+    "id": "PON-ACTOR-001",
+    "kind": "HUMAN",
+    "role": "project-manager-or-integration-runner"
+  },
+  "aggregate": {
+    "expectedVersion": 0,
+    "id": "PON-AGGREGATE-001",
+    "type": "Example"
+  },
+  "authority": {
+    "authorityGrantId": "PON-GRANT-001",
+    "capabilityId": "PON-CAPABILITY-001"
+  },
+  "operation": "integration.record",
+  "parameters": {
+    "candidate": {
+      "configurationRoot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "id": "PON-EXAMPLE-001",
+      "interfaceVersions": {},
+      "packageRoots": {},
+      "parentGenerationId": "PON-EXAMPLE-001",
+      "projectId": "PON-EXAMPLE-001",
+      "testResults": [
+        {
+          "name": "example",
+          "status": "PASSED"
+        }
+      ]
+    }
+  },
+  "schemaVersion": "1"
+}

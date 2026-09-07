@@ -1,0 +1,199 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/operations/bundle.verify.request.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "actor": {
+        "id": "PON-ACTOR-001",
+        "kind": "HUMAN",
+        "role": "courier-or-browser"
+      },
+      "authority": {
+        "capabilityId": "PON-CAPABILITY-001"
+      },
+      "operation": "bundle.verify",
+      "parameters": {
+        "bundle": {
+          "bundleVersion": 1,
+          "canonicalFilename": "example",
+          "manifestRoot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "payloads": [
+            {
+              "path": "example",
+              "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "sizeBytes": 1
+            }
+          ],
+          "semanticMessageId": "PON-EXAMPLE-001",
+          "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sizeBytes": 1
+        }
+      },
+      "requestId": "PON-REQUEST-001",
+      "schemaVersion": "1"
+    }
+  ],
+  "properties": {
+    "actor": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "HUMAN",
+            "BROWSER",
+            "COURIER",
+            "ENDPOINT",
+            "SYSTEM"
+          ],
+          "minLength": 1,
+          "type": "string"
+        },
+        "role": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "role"
+      ],
+      "type": "object"
+    },
+    "authority": {
+      "additionalProperties": false,
+      "properties": {
+        "authorityGrantId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "capabilityId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "exactAuthorActionId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "capabilityId"
+      ],
+      "type": "object"
+    },
+    "operation": {
+      "const": "bundle.verify"
+    },
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle": {
+          "additionalProperties": false,
+          "properties": {
+            "bundleVersion": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "canonicalFilename": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$",
+              "type": "string"
+            },
+            "manifestRoot": {
+              "minLength": 1,
+              "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "payloads": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "path": {
+                    "minLength": 1,
+                    "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$",
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "minLength": 1,
+                    "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "sizeBytes": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "path",
+                  "sizeBytes",
+                  "sha256"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "semanticMessageId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "sha256": {
+              "minLength": 1,
+              "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "sizeBytes": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "semanticMessageId",
+            "canonicalFilename",
+            "bundleVersion",
+            "sizeBytes",
+            "sha256",
+            "manifestRoot",
+            "payloads"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "bundle"
+      ],
+      "type": "object"
+    },
+    "requestId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "operation",
+    "requestId",
+    "actor",
+    "authority",
+    "parameters"
+  ],
+  "title": "bundle.verify request",
+  "type": "object",
+  "x-contractStatus": "CONTRACT_ONLY",
+  "x-minimumAuthority": "courier-or-browser",
+  "x-mutates": false
+}

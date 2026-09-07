@@ -1,0 +1,38 @@
+{
+  "actor": {
+    "id": "PON-ACTOR-001",
+    "kind": "HUMAN",
+    "role": "courier"
+  },
+  "aggregate": {
+    "expectedVersion": 0,
+    "id": "PON-AGGREGATE-001",
+    "type": "Example"
+  },
+  "authority": {
+    "authorityGrantId": "PON-GRANT-001",
+    "capabilityId": "PON-CAPABILITY-001"
+  },
+  "operation": "message.register",
+  "parameters": {
+    "bundleId": "PON-EXAMPLE-001",
+    "semanticMessage": {
+      "authorityBasisId": "PON-EXAMPLE-001",
+      "completionCriteria": "example",
+      "contentRoot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "domain": "PON-EXAMPLE-001",
+      "id": "PON-EXAMPLE-001",
+      "messageType": "example",
+      "recipientGeneration": 1,
+      "recipientMailboxId": "PON-EXAMPLE-001",
+      "relatedMessageIds": [
+        "PON-EXAMPLE-001"
+      ],
+      "requestedAction": "example",
+      "semanticCycleId": "PON-EXAMPLE-001",
+      "senderEndpointId": "PON-EXAMPLE-001"
+    }
+  },
+  "requestId": "PON-REQUEST-001",
+  "schemaVersion": "1"
+}

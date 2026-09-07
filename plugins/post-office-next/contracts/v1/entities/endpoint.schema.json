@@ -1,0 +1,127 @@
+{
+  "$id": "https://local.codex/post-office-next/contracts/v1/entities/endpoint.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "examples": [
+    {
+      "accessScope": {
+        "projectIds": [
+          "PON-PROJECT-001"
+        ]
+      },
+      "createdEventId": "PON-EVENT-001",
+      "id": "PON-ENDPOINT-001",
+      "mailboxId": "PON-MAILBOX-001",
+      "projectId": "PON-PROJECT-001",
+      "role": "worker",
+      "schemaVersion": "1",
+      "startupRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "status": "ACTIVE"
+    }
+  ],
+  "properties": {
+    "accessScope": {
+      "additionalProperties": false,
+      "properties": {
+        "mailDomains": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+            "type": "string"
+          },
+          "minItems": 0,
+          "type": "array"
+        },
+        "packageIds": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+            "type": "string"
+          },
+          "minItems": 0,
+          "type": "array"
+        },
+        "projectIds": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+            "type": "string"
+          },
+          "minItems": 0,
+          "type": "array"
+        },
+        "taskIds": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+            "type": "string"
+          },
+          "minItems": 0,
+          "type": "array"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "createdEventId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "mailboxId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "projectId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    },
+    "role": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "startupRoot": {
+      "minLength": 1,
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "PROVISIONAL",
+        "ACTIVE",
+        "REVOKED",
+        "RETIRED"
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "taskId": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "role",
+    "projectId",
+    "accessScope",
+    "status",
+    "mailboxId",
+    "startupRoot",
+    "createdEventId"
+  ],
+  "title": "endpoint",
+  "type": "object"
+}

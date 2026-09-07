@@ -1,0 +1,21 @@
+{
+  "allowedOperations": [
+    "task.create"
+  ],
+  "classification": "ONE_SHOT",
+  "createdEventId": "PON-EVENT-001",
+  "grantorId": "AUTHOR-001",
+  "id": "PON-GRANT-001",
+  "maximumUses": 1,
+  "rationale": "Bounded task creation",
+  "recipientId": "BROWSER-001",
+  "remainingUses": 1,
+  "schemaVersion": "1",
+  "scope": {
+    "projectIds": [
+      "PON-PROJECT-001"
+    ]
+  },
+  "sourceDecisionId": "PON-DECISION-001",
+  "status": "ACTIVE"
+}

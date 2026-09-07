@@ -1,0 +1,25 @@
+{
+  "actor": {
+    "id": "PON-ACTOR-001",
+    "kind": "HUMAN",
+    "role": "courier"
+  },
+  "aggregate": {
+    "expectedVersion": 0,
+    "id": "PON-AGGREGATE-001",
+    "type": "Example"
+  },
+  "authority": {
+    "authorityGrantId": "PON-GRANT-001",
+    "capabilityId": "PON-CAPABILITY-001"
+  },
+  "operation": "message.route",
+  "parameters": {
+    "bundleId": "PON-EXAMPLE-001",
+    "destinationGeneration": 1,
+    "destinationMailboxId": "PON-EXAMPLE-001",
+    "semanticMessageId": "PON-EXAMPLE-001"
+  },
+  "requestId": "PON-REQUEST-001",
+  "schemaVersion": "1"
+}

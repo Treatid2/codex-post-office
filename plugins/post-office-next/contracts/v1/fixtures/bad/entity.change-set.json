@@ -1,0 +1,10 @@
+{
+  "dependencyEdges": [],
+  "id": "PON-CHANGE-001",
+  "integrationContractRoot": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "purpose": "Coordinated change",
+  "state": "PROPOSED",
+  "taskIds": [
+    "PON-TASK-001"
+  ]
+}

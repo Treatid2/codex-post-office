@@ -1,0 +1,14 @@
+{
+  "configurationRoot": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "id": "PON-CANDIDATE-001",
+  "interfaceVersions": {
+    "PON-INTERFACE-001": "0.1.0"
+  },
+  "packageRoots": {
+    "PON-PACKAGE-001": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "parentGenerationId": "PON-GEN-001",
+  "projectId": "PON-PROJECT-001",
+  "state": "PROPOSED",
+  "testResults": []
+}

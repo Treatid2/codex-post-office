@@ -1,0 +1,22 @@
+{
+  "actor": {
+    "id": "PON-ACTOR-001",
+    "kind": "HUMAN",
+    "role": "package-steward-or-browser"
+  },
+  "aggregate": {
+    "expectedVersion": 0,
+    "id": "PON-AGGREGATE-001",
+    "type": "Example"
+  },
+  "authority": {
+    "authorityGrantId": "PON-GRANT-001",
+    "capabilityId": "PON-CAPABILITY-001"
+  },
+  "operation": "package.deprecate",
+  "parameters": {
+    "packageId": "PON-EXAMPLE-001",
+    "reason": "example"
+  },
+  "schemaVersion": "1"
+}

@@ -1,0 +1,17 @@
+{
+  "actor": {
+    "id": "PON-ACTOR-001",
+    "kind": "HUMAN",
+    "role": "authenticated-reader"
+  },
+  "authority": {
+    "capabilityId": "PON-CAPABILITY-001"
+  },
+  "operation": "authority.inspect",
+  "parameters": {
+    "actorId": "PON-EXAMPLE-001",
+    "proposedOperation": "example"
+  },
+  "requestId": "PON-REQUEST-001",
+  "schemaVersion": "1"
+}
