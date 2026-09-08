@@ -285,8 +285,13 @@ try {
       const score = /:\s*Document\b/i.test(context) ? 2 : /:\s*File\b/i.test(context) ? 1 : 0;
       candidates.push({ reference, score, index });
     }
+    // ChatGPT commonly exposes both an inline exact-filename download control
+    // and a richer document card for the same attachment. Prefer the inline
+    // control: the card launches the artifact preview and can invalidate the
+    // browser target while that preview is still being prepared. The scored
+    // card remains the bounded fallback when no direct control succeeds.
     attachmentCandidates = [...new Map(candidates.map((candidate) => [candidate.reference, candidate])).values()]
-      .sort((left, right) => right.score - left.score || left.index - right.index);
+      .sort((left, right) => left.score - right.score || left.index - right.index);
     if (attachmentCandidates.length > 8) {
       throw new Error(`Exact attachment control count exceeds the bounded maximum: ${attachmentCandidates.length}`);
     }

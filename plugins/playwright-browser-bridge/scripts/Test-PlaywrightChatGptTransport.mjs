@@ -93,7 +93,7 @@ const server = http.createServer(async (request, response) => {
     result = textResult(authenticated && lastNavigation === "https://chatgpt.com/c/" + threadId
       ? uploadMenuOpen
         ? "### Page snapshot\n- menuitem \"Upload from computer\" [ref=e11]"
-        : "### Page snapshot\n- button \"Add files and more\" [ref=e10]\n- textbox \"Message ChatGPT\" [ref=e4]\n- button \"Send prompt\" [ref=e5]\n- link \"" + attachmentName + "\" [ref=e44]\n- button \"" + attachmentName + "\" [ref=e42]\n  - generic: Document"
+        : "### Page snapshot\n- button \"Add files and more\" [ref=e10]\n- textbox \"Message ChatGPT\" [ref=e4]\n- button \"Send prompt\" [ref=e5]\n- button \"" + attachmentName + "\" [ref=e40]\n- button \"" + attachmentName + "\" [ref=e42]\n  - generic: Document"
       : authenticated
         ? "### Page snapshot\n- button \"New chat\" [ref=e3]\n- textbox \"Message ChatGPT\" [ref=e4]"
         : "### Page snapshot\n- button \"Log in\" [ref=e1]\n- button \"Sign up\" [ref=e2]");
@@ -123,6 +123,10 @@ const server = http.createServer(async (request, response) => {
       uploadMenuOpen = false;
       chooserOpen = true;
       result = textResult("### Result\nFile chooser opened");
+    } else if (args.target === "e40") {
+      clickCount += 1;
+      await fs.writeFile(path.join(outputRoot, "download-" + clickCount + ".md"), payload);
+      result = textResult("### Result\nDownload started");
     } else if (args.target === "e42") {
       previewOpen = true;
       result = textResult("### Result\nPreview opened");
