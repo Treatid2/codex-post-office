@@ -12,8 +12,8 @@ An automatic-review browser consists of four separately recorded objects:
 None of these identifiers is interchangeable. The browser profile is authenticated browser state,
 not review evidence or long-term Post Office data.
 
-The public development preview supplies the browser bridge and requester client. Registration,
-scheduling and result custody require a separately deployed compatible Post Office backend.
+The public repository supplies the browser bridge and requester client. Registration, scheduling
+and result custody use the separately deployed compatible Post Office backend.
 
 ## Lifecycle states
 
@@ -37,8 +37,10 @@ reviewers are excluded from selection.
 2. Create one dedicated ChatGPT review conversation. Do not reuse a project-manager mailbox or an
    historical/manual review conversation.
 3. Start the bridge in DedicatedChrome mode without Headless.
-4. Sign in interactively to ChatGPT in the dedicated Chrome window.
-5. Stop the bridge and restart with Headless and BrowserCheck.
+4. Run `bootstrap`; sign in interactively to ChatGPT in the dedicated Chrome window when it reports
+   `AUTHENTICATION_REQUIRED`, then rerun `bootstrap` until it reports `AUTHENTICATED`.
+5. Keep the bridge headed for the reliable ChatGPT path. Headless is optional only after a
+   headless bootstrap proves the site accepts it.
 6. Verify that the endpoint is loopback-only and that the bridge reports the expected process,
    profile and browser identity.
 7. Bind the mailbox generation to the exact browser conversation and review guidance.
@@ -51,10 +53,13 @@ Bridge commands:
 ~~~powershell
 ./plugins/playwright-browser-bridge/scripts/Invoke-PlaywrightBrowserBridge.ps1 preflight -BrowserMode DedicatedChrome
 ./plugins/playwright-browser-bridge/scripts/Invoke-PlaywrightBrowserBridge.ps1 start -BrowserMode DedicatedChrome -BrowserCheck
-./plugins/playwright-browser-bridge/scripts/Invoke-PlaywrightBrowserBridge.ps1 stop
-./plugins/playwright-browser-bridge/scripts/Invoke-PlaywrightBrowserBridge.ps1 start -BrowserMode DedicatedChrome -Headless -BrowserCheck
+./plugins/playwright-browser-bridge/scripts/Invoke-PlaywrightBrowserBridge.ps1 bootstrap
 ./plugins/playwright-browser-bridge/scripts/Invoke-PlaywrightBrowserBridge.ps1 status -BrowserCheck
 ~~~
+
+Headed bootstrap retains at most one login tab and retires that session when authentication
+succeeds. In headless service mode the command is a bounded authentication check only; an
+interstitial means the reviewer must remain headed.
 
 The raw bridge remains internal to the Post Office/review gateway. Review requesters never receive
 Playwright or CDP tools.
@@ -66,6 +71,9 @@ Playwright or CDP tools.
 - Each reviewer runs at most one active review and owns its own FIFO.
 - A returned turn is only a scheduling signal until Review ID, activation dispatch, attachment
   identity, size and SHA-256 are verified.
+- If the direct task API cannot expose the exact attachment path, use the bridge's
+  `collect-attachment` command with the retained reviewer conversation UUID, result name, byte
+  count, SHA-256, Review ID, and Activation Dispatch ID. Import the returned bytes immediately.
 - Preserve results in local custody and return them only to the retained requester.
 - Review output has REPORT authority; it grants no implementation or publication authority.
 - A normal return wakes the collector through the completed-turn event. There is no polling

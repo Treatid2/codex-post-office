@@ -110,13 +110,16 @@ For the normal review browser, perform one headed initialization:
 ./plugins/playwright-browser-bridge/scripts/Invoke-PlaywrightBrowserBridge.ps1 start -BrowserMode DedicatedChrome -BrowserCheck
 ~~~
 
-Sign in to ChatGPT only in the dedicated Chrome window. Stop it, then restart headlessly for
-unattended review transport:
+Sign in to ChatGPT only in the dedicated Chrome window. Keep the dedicated service headed for the
+reliable ChatGPT path:
 
 ~~~powershell
-./plugins/playwright-browser-bridge/scripts/Invoke-PlaywrightBrowserBridge.ps1 stop
-./plugins/playwright-browser-bridge/scripts/Invoke-PlaywrightBrowserBridge.ps1 start -BrowserMode DedicatedChrome -Headless -BrowserCheck
+./plugins/playwright-browser-bridge/scripts/Invoke-PlaywrightBrowserBridge.ps1 bootstrap
 ~~~
+
+Headed bootstrap retains at most one authentication tab while login is required and retires it
+after authentication succeeds. `-Headless` is optional only after a headless bootstrap proves the
+site accepts it. If login is required or an interstitial appears, operate headed.
 
 The default endpoint is loopback-only. Never expose the raw Playwright endpoint through ngrok,
 localtunnel, port forwarding or Secure MCP Tunnel. A tunnel, when required, terminates at a narrow

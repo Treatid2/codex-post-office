@@ -15,14 +15,18 @@ Use `scripts/Invoke-PlaywrightBrowserBridge.ps1` for every lifecycle operation:
 ```powershell
 ./scripts/Invoke-PlaywrightBrowserBridge.ps1 preflight
 ./scripts/Invoke-PlaywrightBrowserBridge.ps1 start -BrowserMode DedicatedChrome -BrowserCheck
+./scripts/Invoke-PlaywrightBrowserBridge.ps1 bootstrap
 ./scripts/Invoke-PlaywrightBrowserBridge.ps1 status -BrowserCheck
 ./scripts/Invoke-PlaywrightBrowserBridge.ps1 probe -BrowserCheck
 ./scripts/Invoke-PlaywrightBrowserBridge.ps1 stop
 ```
 
 `DedicatedChrome` is the normal mode. Its first start is headed so a human can authenticate the
-review-only account. After authentication, stop it and restart with `-Headless`. `ManagedChrome` is
-disposable test/recovery state. `ExistingChrome` is diagnostic-only because attaching to a live
+review-only account. Run `bootstrap`; when it reports `AUTHENTICATION_REQUIRED`, let the human sign
+in and rerun it until it reports `AUTHENTICATED`. Keep it headed for reliable ChatGPT operation.
+Use `-Headless` only after a headless `bootstrap` proves the
+target site accepts it; an authentication interstitial requires headed operation. `ManagedChrome`
+is disposable test/recovery state. `ExistingChrome` is diagnostic-only because attaching to a live
 personal Chrome session has broad authority and may require consent for every connection.
 
 Keep the listener on `127.0.0.1`. Never expose it through a public tunnel, change it to a wildcard
@@ -39,3 +43,8 @@ a tab or extension was refreshed.
 
 The bridge has no heartbeat. Probe at the point of use and treat normal MCP traffic as liveness.
 Import any result that must be retained into Post Office custody before clearing browser output.
+
+Use `collect-attachment` only after an authoritative task read has supplied the exact ChatGPT
+conversation UUID, attachment filename, byte count, SHA-256, and any required review correlation
+markers. The command navigates only to that ChatGPT conversation and returns only newly downloaded,
+hash-matching bytes. It does not interpret the attachment or grant mail/review authority.

@@ -9,7 +9,13 @@
   "homepage": "https://github.com/Treatid2/codex-post-office/tree/main/plugins/playwright-browser-bridge",
   "repository": "https://github.com/Treatid2/codex-post-office",
   "license": "MPL-2.0",
-  "keywords": ["codex", "playwright", "browser", "mcp", "chrome"],
+  "keywords": [
+    "codex",
+    "playwright",
+    "browser",
+    "mcp",
+    "chrome"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Playwright Browser Bridge",

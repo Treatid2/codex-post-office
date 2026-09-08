@@ -3,7 +3,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet('preflight', 'start', 'status', 'probe', 'stop')]
+    [ValidateSet('preflight', 'start', 'bootstrap', 'collect-attachment', 'status', 'probe', 'stop')]
     [string] $Command,
 
     [ValidateRange(1024, 65535)]
@@ -18,7 +18,13 @@ param(
     [ValidateRange(1, 120)]
     [int] $TimeoutSeconds = 30,
 
-    [string] $StateRoot = (Join-Path $env:LOCALAPPDATA 'Treatid2\CodexPostOffice\playwright-browser-bridge')
+    [string] $StateRoot = (Join-Path $env:LOCALAPPDATA 'Codex\PostOfficeNext\playwright-browser-bridge'),
+
+    [string] $ThreadId,
+    [string] $AttachmentName,
+    [string] $ExpectedSha256,
+    [long] $ExpectedBytes = 0,
+    [string[]] $RequiredText = @()
 )
 
 $ErrorActionPreference = 'Stop'
@@ -27,11 +33,103 @@ $bindHost = '127.0.0.1'
 $endpoint = "http://${bindHost}:$Port/mcp"
 $metadataPath = Join-Path $StateRoot 'bridge.json'
 $probeScript = Join-Path $PSScriptRoot 'playwright_bridge_probe.mjs'
+$bootstrapScript = Join-Path $PSScriptRoot 'playwright_chatgpt_bootstrap.mjs'
+$collectorScript = Join-Path $PSScriptRoot 'playwright_chatgpt_collect.mjs'
 $brokerScript = Join-Path $PSScriptRoot 'playwright_mcp_broker.mjs'
 $profileRoot = Join-Path $StateRoot 'chrome-profile'
+$startAttemptId = if ($Command -eq 'start') { [Guid]::NewGuid().ToString('N') } else { $null }
+$metadataOwnedByThisStart = $false
+$stateMutex = $null
+$stateMutexOwned = $false
+
+function Get-PhysicalPathKey([string] $Path) {
+    $full = [IO.Path]::GetFullPath($Path)
+    $existing = $full
+    $suffix = [Collections.Generic.List[string]]::new()
+    while (-not (Test-Path -LiteralPath $existing)) {
+        $leaf = Split-Path -Leaf $existing
+        if (-not $leaf) { break }
+        $suffix.Insert(0, $leaf)
+        $existing = Split-Path -Parent $existing
+    }
+    if (-not (Test-Path -LiteralPath $existing -PathType Container)) {
+        throw "StateRoot has no existing directory ancestor: $full"
+    }
+    $resolved = (Resolve-Path -LiteralPath $existing).ProviderPath
+    $cursor = Get-Item -LiteralPath $resolved -Force
+    if ($cursor.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        throw "StateRoot topology uses a reparse point: $($cursor.FullName)"
+    }
+    foreach ($part in $suffix) { $resolved = Join-Path $resolved $part }
+    return [IO.Path]::GetFullPath($resolved).TrimEnd('\').ToLowerInvariant()
+}
+
+function Test-PathWithin([string] $Candidate, [string] $Root) {
+    return $Candidate -eq $Root -or $Candidate.StartsWith($Root + '\', [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Assert-SafeStateRoot {
+    $stateKey = Get-PhysicalPathKey $StateRoot
+    $protected = [Collections.Generic.List[string]]::new()
+    if ($env:CODEX_COMMS_HUB_ROOT) { $protected.Add($env:CODEX_COMMS_HUB_ROOT) }
+    if ($env:POST_OFFICE_STATE_ROOT) { $protected.Add($env:POST_OFFICE_STATE_ROOT) }
+    foreach ($root in $protected) {
+        $rootKey = Get-PhysicalPathKey $root
+        if ((Test-PathWithin $stateKey $rootKey) -or (Test-PathWithin $rootKey $stateKey)) {
+            throw "Browser bridge StateRoot overlaps protected Post Office state: $root"
+        }
+    }
+}
 
 function Write-Result([hashtable] $Value) {
     $Value | ConvertTo-Json -Depth 8 -Compress
+}
+
+function ConvertTo-NativeArgument([string] $Value) {
+    if ($Value -notmatch '[\s"]') { return $Value }
+    $builder = [Text.StringBuilder]::new()
+    $null = $builder.Append('"')
+    $backslashes = 0
+    foreach ($character in $Value.ToCharArray()) {
+        if ($character -eq '\') {
+            $backslashes += 1
+            continue
+        }
+        if ($character -eq '"') {
+            $null = $builder.Append(('\' * (($backslashes * 2) + 1)))
+            $null = $builder.Append('"')
+        } else {
+            if ($backslashes) { $null = $builder.Append(('\' * $backslashes)) }
+            $null = $builder.Append($character)
+        }
+        $backslashes = 0
+    }
+    if ($backslashes) { $null = $builder.Append(('\' * ($backslashes * 2))) }
+    $null = $builder.Append('"')
+    return $builder.ToString()
+}
+
+function Get-PublicMetadata($Metadata) {
+    $public = [ordered]@{}
+    if ($Metadata -is [Collections.IDictionary]) {
+        foreach ($key in $Metadata.Keys) {
+            if ($key -notin @('brokerShutdownToken', 'startAttemptId')) { $public[$key] = $Metadata[$key] }
+        }
+    } else {
+        foreach ($property in $Metadata.PSObject.Properties) {
+            if ($property.Name -notin @('brokerShutdownToken', 'startAttemptId')) { $public[$property.Name] = $property.Value }
+        }
+    }
+    return $public
+}
+
+function Get-PublicProcessIdentity($Identity) {
+    return [ordered]@{
+        processId = $Identity.processId
+        creationDate = $Identity.creationDate
+        creationUtcTicks = $Identity.creationUtcTicks
+        executablePath = $Identity.executablePath
+    }
 }
 
 function Resolve-Executable([string[]] $Names) {
@@ -157,12 +255,26 @@ function Read-Metadata {
     return Get-Content -Raw -LiteralPath $metadataPath | ConvertFrom-Json
 }
 
-function Assert-ProcessIdentity($Metadata, [string] $Prefix, [scriptblock] $Matcher) {
+function Write-Metadata($Metadata) {
+    New-Item -ItemType Directory -Path $StateRoot -Force | Out-Null
+    $temporaryMetadata = "$metadataPath.$([Guid]::NewGuid().ToString('N')).tmp"
+    try {
+        $Metadata | ConvertTo-Json -Depth 4 |
+            Set-Content -LiteralPath $temporaryMetadata -Encoding utf8NoBOM
+        Move-Item -LiteralPath $temporaryMetadata -Destination $metadataPath -Force
+    } finally {
+        Remove-Item -LiteralPath $temporaryMetadata -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Assert-ProcessIdentity($Metadata, [string] $Prefix, [scriptblock] $Matcher, [bool] $RequireListener = $true) {
     $processId = [int]$Metadata."${Prefix}ProcessId"
     $port = [int]$Metadata."${Prefix}Port"
-    $listener = Get-ListenerProcess -ListenerPort $port
-    if (-not $listener -or [int]$listener.OwningProcess -ne $processId) {
-        throw "The recorded $Prefix process no longer owns port $port."
+    if ($RequireListener) {
+        $listener = Get-ListenerProcess -ListenerPort $port
+        if (-not $listener -or [int]$listener.OwningProcess -ne $processId) {
+            throw "The recorded $Prefix process no longer owns port $port."
+        }
     }
     $identity = Get-ProcessIdentity -ProcessId $processId
     if (-not $identity) { throw "The recorded $Prefix process no longer exists." }
@@ -181,6 +293,57 @@ function Assert-OwnedService($Metadata) {
     return @{ broker = $broker; playwright = $playwright }
 }
 
+function Stop-RecordedProcessIfOwned($Metadata, [string] $Prefix, [scriptblock] $Matcher, [bool] $RequireListener = $true) {
+    $processIdProperty = "${Prefix}ProcessId"
+    if (-not ($Metadata.PSObject.Properties.Name -contains $processIdProperty)) { return $false }
+    $processId = [int]$Metadata.$processIdProperty
+    if (-not (Get-Process -Id $processId -ErrorAction SilentlyContinue)) { return $false }
+    # Assert immediately before the destructive operation. If the listener or
+    # creation identity changed, refusing is safer than killing a reused PID.
+    $null = Assert-ProcessIdentity $Metadata $Prefix $Matcher $RequireListener
+    Stop-Process -Id $processId -Force
+    return $true
+}
+
+function Test-RecordedProcessAlive($Metadata, [string] $Prefix) {
+    $property = "${Prefix}ProcessId"
+    if (-not ($Metadata.PSObject.Properties.Name -contains $property)) { return $false }
+    $identity = Get-ProcessIdentity -ProcessId ([int]$Metadata.$property)
+    if (-not $identity) { return $false }
+    return [long]$identity.creationUtcTicks -eq [long]$Metadata."${Prefix}CreationUtcTicks"
+}
+
+function Remove-MetadataIfOwned([string] $AttemptId) {
+    if (-not (Test-Path -LiteralPath $metadataPath -PathType Leaf)) { return $true }
+    $current = Read-Metadata
+    if ($current.startAttemptId -ne $AttemptId) { return $false }
+    Remove-Item -LiteralPath $metadataPath -Force
+    return $true
+}
+
+function Remove-StaleManagedState($Metadata) {
+    $failures = [Collections.Generic.List[string]]::new()
+    $requireListeners = $Metadata.state -eq 'RUNNING'
+    try { $null = Stop-RecordedProcessIfOwned $Metadata 'broker' ${function:Test-BrokerListenerIdentity} $requireListeners }
+    catch { $failures.Add($_.Exception.Message) }
+    try { $null = Stop-RecordedProcessIfOwned $Metadata 'playwright' ${function:Test-PlaywrightListenerIdentity} $requireListeners }
+    catch { $failures.Add($_.Exception.Message) }
+    $deadline = [DateTime]::UtcNow.AddSeconds([Math]::Min($TimeoutSeconds, 5))
+    while ([DateTime]::UtcNow -lt $deadline -and
+        ((Test-RecordedProcessAlive $Metadata 'broker') -or (Test-RecordedProcessAlive $Metadata 'playwright'))) {
+        Start-Sleep -Milliseconds 200
+    }
+    foreach ($prefix in @('broker', 'playwright')) {
+        if (Test-RecordedProcessAlive $Metadata $prefix) { $failures.Add("The recorded $prefix process survived recovery cleanup.") }
+    }
+    if ($failures.Count) {
+        throw "Stale bridge metadata has a live component that cannot be proven safe to stop: $($failures -join '; ')"
+    }
+    if (-not (Remove-MetadataIfOwned ([string]$Metadata.startAttemptId))) {
+        throw 'Stale bridge metadata ownership changed during recovery; the newer record was preserved.'
+    }
+}
+
 function Invoke-Probe([switch] $RequireBrowser) {
     $runtime = Get-NodeRuntime
     $probeArguments = @(
@@ -196,6 +359,50 @@ function Invoke-Probe([switch] $RequireBrowser) {
     return ($output -join [Environment]::NewLine | ConvertFrom-Json)
 }
 
+function Invoke-ChatGptBootstrap([switch] $RetainAuthenticationTab) {
+    $runtime = Get-NodeRuntime
+    $bootstrapArguments = @(
+        $bootstrapScript,
+        '--endpoint', $endpoint,
+        '--timeout-ms', ([string]($TimeoutSeconds * 1000))
+    )
+    if ($RetainAuthenticationTab) {
+        $bootstrapArguments += @(
+            '--keep-open',
+            '--session-state', (Join-Path $StateRoot 'authentication-session.json')
+        )
+    }
+    $output = & $runtime.node @bootstrapArguments 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "ChatGPT browser bootstrap failed: $($output -join [Environment]::NewLine)"
+    }
+    return ($output -join [Environment]::NewLine | ConvertFrom-Json)
+}
+
+function Invoke-ChatGptAttachmentCollection {
+    if (-not $ThreadId -or -not $AttachmentName -or -not $ExpectedSha256 -or $ExpectedBytes -lt 1) {
+        throw 'collect-attachment requires ThreadId, AttachmentName, ExpectedSha256, and ExpectedBytes.'
+    }
+    $runtime = Get-NodeRuntime
+    $outputRoot = Join-Path $StateRoot 'output'
+    $collectorArguments = @(
+        $collectorScript,
+        '--endpoint', $endpoint,
+        '--timeout-ms', ([string]($TimeoutSeconds * 1000)),
+        '--thread-id', $ThreadId,
+        '--attachment-name', $AttachmentName,
+        '--expected-sha256', $ExpectedSha256,
+        '--expected-bytes', ([string]$ExpectedBytes),
+        '--output-root', $outputRoot,
+        '--required-text-json', (ConvertTo-Json -InputObject @($RequiredText) -Compress)
+    )
+    $output = & $runtime.node @collectorArguments 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "ChatGPT attachment collection failed: $($output -join [Environment]::NewLine)"
+    }
+    return ($output -join [Environment]::NewLine | ConvertFrom-Json)
+}
+
 $playwrightLauncher = $null
 $brokerLauncher = $null
 $startedPlaywrightIdentity = $null
@@ -203,6 +410,16 @@ $startedBrokerIdentity = $null
 $rawPort = $null
 
 try {
+    if ($Command -in @('start', 'stop')) {
+        $mutexName = 'Local\PostOfficeNext-PlaywrightBridge-' + [Convert]::ToHexString(
+            [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(
+                [IO.Path]::GetFullPath($StateRoot).ToLowerInvariant()
+            ))
+        )
+        $stateMutex = [Threading.Mutex]::new($false, $mutexName)
+        $stateMutexOwned = $stateMutex.WaitOne(0)
+        if (-not $stateMutexOwned) { throw 'Another bridge lifecycle operation is already active for this state root.' }
+    }
     if ($Command -eq 'preflight') {
         $runtime = Get-NodeRuntime
         $cdpReady = $null
@@ -234,16 +451,19 @@ try {
     }
 
     if ($Command -eq 'start') {
+        Assert-SafeStateRoot
         $runtime = Get-NodeRuntime
         if (Test-Path -LiteralPath $metadataPath -PathType Leaf) {
             $existing = Read-Metadata
-            try {
+            if ($existing.state -eq 'RUNNING') {
+              try {
                 $null = Assert-OwnedService $existing
                 throw "A managed bridge is already running on port $($existing.port)."
-            } catch {
+              } catch {
                 if ($_.Exception.Message -like 'A managed bridge is already running*') { throw }
-                Remove-Item -LiteralPath $metadataPath -Force
+              }
             }
+            Remove-StaleManagedState $existing
         }
         if (Get-ListenerProcess -ListenerPort $Port) {
             throw "Port $Port is already in use; refusing to replace or share the listener."
@@ -278,7 +498,8 @@ try {
         }
         if ($Headless) { $arguments += '--headless' }
 
-        $playwrightLauncher = Start-Process -FilePath $runtime.npx -ArgumentList $arguments `
+        $playwrightArguments = @($arguments | ForEach-Object { ConvertTo-NativeArgument ([string]$_) })
+        $playwrightLauncher = Start-Process -FilePath $runtime.npx -ArgumentList $playwrightArguments `
             -WorkingDirectory $StateRoot -RedirectStandardOutput $stdoutPath `
             -RedirectStandardError $stderrPath -WindowStyle Hidden -PassThru
         $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
@@ -306,19 +527,57 @@ try {
         }
         $startedPlaywrightIdentity = $playwrightIdentity
 
+        $partialMetadata = [ordered]@{
+            schemaVersion = 3
+            state = 'STARTING'
+            startAttemptId = $startAttemptId
+            package = "@playwright/mcp@$packageVersion"
+            endpoint = $endpoint
+            host = $bindHost
+            port = $Port
+            internalEndpoint = "http://${bindHost}:$rawPort/mcp"
+            playwrightProcessId = $playwrightIdentity.processId
+            playwrightPort = $rawPort
+            playwrightCreationDate = $playwrightIdentity.creationDate
+            playwrightCreationUtcTicks = $playwrightIdentity.creationUtcTicks
+        }
+        Write-Metadata $partialMetadata
+        $metadataOwnedByThisStart = $true
+
+        $shutdownToken = [Convert]::ToHexString(
+            [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
+        ).ToLowerInvariant()
         $brokerArguments = @(
             $brokerScript,
             '--listen-port', [string]$Port,
             '--upstream', "http://${bindHost}:$rawPort/mcp",
-            '--timeout-ms', '120000',
-            '--shutdown-token', ([Convert]::ToHexString(
-                [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
-            ).ToLowerInvariant())
+            '--timeout-ms', '120000'
         )
-        $shutdownToken = $brokerArguments[-1]
-        $brokerLauncher = Start-Process -FilePath $runtime.node -ArgumentList $brokerArguments `
+        $encodedBrokerArguments = @($brokerArguments | ForEach-Object { ConvertTo-NativeArgument ([string]$_) })
+        $brokerLauncher = Start-Process -FilePath $runtime.node -ArgumentList $encodedBrokerArguments `
             -WorkingDirectory $StateRoot -RedirectStandardOutput $brokerStdoutPath `
-            -RedirectStandardError $brokerStderrPath -WindowStyle Hidden -PassThru
+            -RedirectStandardError $brokerStderrPath -WindowStyle Hidden -PassThru `
+            -Environment @{ PON_BROWSER_BRIDGE_SHUTDOWN_TOKEN = $shutdownToken }
+        $launchedBrokerIdentity = Get-ProcessIdentity -ProcessId $brokerLauncher.Id
+        if (-not $launchedBrokerIdentity -or -not (Test-BrokerListenerIdentity $launchedBrokerIdentity $Port)) {
+            throw 'Unable to record the launched browser broker identity.'
+        }
+        $startedBrokerIdentity = $launchedBrokerIdentity
+        $partialMetadata.browserMode = $BrowserMode
+        $partialMetadata.persistentProfile = if ($BrowserMode -eq 'DedicatedChrome') { $profileRoot } else { $null }
+        $partialMetadata.headless = [bool]$Headless
+        $partialMetadata.playwrightLauncherProcessId = $playwrightLauncher.Id
+        $partialMetadata.brokerLauncherProcessId = $brokerLauncher.Id
+        $partialMetadata.brokerProcessId = $launchedBrokerIdentity.processId
+        $partialMetadata.brokerPort = $Port
+        $partialMetadata.brokerCreationDate = $launchedBrokerIdentity.creationDate
+        $partialMetadata.brokerCreationUtcTicks = $launchedBrokerIdentity.creationUtcTicks
+        $partialMetadata.brokerShutdownToken = $shutdownToken
+        $partialMetadata.stdoutPath = $stdoutPath
+        $partialMetadata.stderrPath = $stderrPath
+        $partialMetadata.brokerStdoutPath = $brokerStdoutPath
+        $partialMetadata.brokerStderrPath = $brokerStderrPath
+        Write-Metadata $partialMetadata
         $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
         $brokerListener = $null
         while ([DateTime]::UtcNow -lt $deadline) {
@@ -340,8 +599,14 @@ try {
             throw 'The new listener process did not match the expected browser broker command.'
         }
         $startedBrokerIdentity = $brokerIdentity
+        $partialMetadata.brokerProcessId = $brokerIdentity.processId
+        $partialMetadata.brokerCreationDate = $brokerIdentity.creationDate
+        $partialMetadata.brokerCreationUtcTicks = $brokerIdentity.creationUtcTicks
+        Write-Metadata $partialMetadata
         $metadata = [ordered]@{
-            schemaVersion = 2
+            schemaVersion = 3
+            state = 'RUNNING'
+            startAttemptId = $startAttemptId
             package = "@playwright/mcp@$packageVersion"
             endpoint = $endpoint
             host = $bindHost
@@ -367,13 +632,10 @@ try {
             brokerStdoutPath = $brokerStdoutPath
             brokerStderrPath = $brokerStderrPath
         }
-        $temporaryMetadata = "$metadataPath.tmp"
-        $metadata | ConvertTo-Json -Depth 4 |
-            Set-Content -LiteralPath $temporaryMetadata -Encoding utf8NoBOM
-        Move-Item -LiteralPath $temporaryMetadata -Destination $metadataPath -Force
+        Write-Metadata $metadata
 
         $probe = Invoke-Probe -RequireBrowser:$BrowserCheck
-        Write-Result @{ ok = $true; command = $Command; bridge = $metadata; probe = $probe }
+        Write-Result @{ ok = $true; command = $Command; bridge = (Get-PublicMetadata $metadata); probe = $probe }
         exit 0
     }
 
@@ -400,9 +662,46 @@ try {
             ok = $true
             command = $Command
             running = $true
-            bridge = $metadata
-            processes = $identities
+            bridge = (Get-PublicMetadata $metadata)
+            processes = @{
+                broker = (Get-PublicProcessIdentity $identities.broker)
+                playwright = (Get-PublicProcessIdentity $identities.playwright)
+            }
             probe = $probe
+        }
+        exit 0
+    }
+
+    if ($Command -eq 'bootstrap') {
+        $identities = Assert-OwnedService $metadata
+        if ($metadata.browserMode -ne 'DedicatedChrome') {
+            throw "ChatGPT bootstrap requires DedicatedChrome; the running mode is $($metadata.browserMode)."
+        }
+        $bootstrap = Invoke-ChatGptBootstrap -RetainAuthenticationTab:(-not [bool]$metadata.headless)
+        Write-Result @{
+            ok = $true
+            command = $Command
+            bridge = (Get-PublicMetadata $metadata)
+            processes = @{
+                broker = (Get-PublicProcessIdentity $identities.broker)
+                playwright = (Get-PublicProcessIdentity $identities.playwright)
+            }
+            bootstrap = $bootstrap
+        }
+        exit 0
+    }
+
+    if ($Command -eq 'collect-attachment') {
+        $identities = Assert-OwnedService $metadata
+        if ($metadata.browserMode -ne 'DedicatedChrome') {
+            throw "ChatGPT attachment collection requires DedicatedChrome; the running mode is $($metadata.browserMode)."
+        }
+        $collection = Invoke-ChatGptAttachmentCollection
+        Write-Result @{
+            ok = $true
+            command = $Command
+            bridge = (Get-PublicMetadata $metadata)
+            collection = $collection
         }
         exit 0
     }
@@ -416,22 +715,26 @@ try {
             (Get-Process -Id $identities.broker.processId -ErrorAction SilentlyContinue)) {
             Start-Sleep -Milliseconds 200
         }
-        if (Get-Process -Id $identities.playwright.processId -ErrorAction SilentlyContinue) {
-            Stop-Process -Id $identities.playwright.processId -Force
-        }
+        $null = Stop-RecordedProcessIfOwned $metadata 'playwright' ${function:Test-PlaywrightListenerIdentity}
         $deadline = [DateTime]::UtcNow.AddSeconds([Math]::Min($TimeoutSeconds, 5))
         while ([DateTime]::UtcNow -lt $deadline -and
             ((Get-Process -Id $identities.broker.processId -ErrorAction SilentlyContinue) -or
              (Get-Process -Id $identities.playwright.processId -ErrorAction SilentlyContinue))) {
             Start-Sleep -Milliseconds 200
         }
-        if ((Get-Process -Id $identities.broker.processId -ErrorAction SilentlyContinue) -or
-            (Get-Process -Id $identities.playwright.processId -ErrorAction SilentlyContinue)) {
-            Stop-Process -Id $identities.broker.processId -Force -ErrorAction SilentlyContinue
-            Stop-Process -Id $identities.playwright.processId -Force -ErrorAction SilentlyContinue
-            throw 'The browser bridge did not stop gracefully; its verified processes were forced closed.'
+        if (Get-Process -Id $identities.broker.processId -ErrorAction SilentlyContinue) {
+            $null = Stop-RecordedProcessIfOwned $metadata 'broker' ${function:Test-BrokerListenerIdentity}
+            throw 'The browser broker did not stop gracefully; its identity was revalidated and it was forced closed.'
         }
-        Remove-Item -LiteralPath $metadataPath -Force
+        if (Get-Process -Id $identities.playwright.processId -ErrorAction SilentlyContinue) {
+            $null = Stop-RecordedProcessIfOwned $metadata 'playwright' ${function:Test-PlaywrightListenerIdentity}
+            throw 'Playwright MCP did not stop after its identity was revalidated.'
+        }
+        if (-not (Remove-MetadataIfOwned ([string]$metadata.startAttemptId))) {
+            throw 'Bridge stopped, but its management record changed ownership and was preserved.'
+        }
+        Remove-Item -LiteralPath (Join-Path $StateRoot 'authentication-session.json') `
+            -Force -ErrorAction SilentlyContinue
         Write-Result @{
             ok = $true
             command = $Command
@@ -442,40 +745,107 @@ try {
         exit 0
     }
 } catch {
+    $caughtException = $_.Exception
+    $reportedCleanupFailures = @()
+    $reportedSurvivors = @()
     if ($Command -eq 'start') {
-        if ($startedBrokerIdentity) {
-            $currentListener = Get-ListenerProcess -ListenerPort $Port
-            $currentIdentity = Get-ProcessIdentity -ProcessId $startedBrokerIdentity.processId
-            if ($currentListener -and
-                [int]$currentListener.OwningProcess -eq [int]$startedBrokerIdentity.processId -and
-                [long]$currentIdentity.creationUtcTicks -eq [long]$startedBrokerIdentity.creationUtcTicks -and
-                (Test-BrokerListenerIdentity $currentIdentity $Port)) {
-                Stop-Process -Id $startedBrokerIdentity.processId -Force -ErrorAction SilentlyContinue
+        $startupError = $caughtException.Message
+        $cleanupFailures = [Collections.Generic.List[string]]::new()
+        $survivors = [Collections.Generic.List[string]]::new()
+        $ownedMetadata = $null
+        if ($metadataOwnedByThisStart -and (Test-Path -LiteralPath $metadataPath -PathType Leaf)) {
+            $candidateMetadata = Read-Metadata
+            if ($candidateMetadata.startAttemptId -eq $startAttemptId) { $ownedMetadata = $candidateMetadata }
+        }
+        if ($ownedMetadata) {
+            try { $null = Stop-RecordedProcessIfOwned $ownedMetadata 'broker' ${function:Test-BrokerListenerIdentity} $false }
+            catch { $cleanupFailures.Add("broker: $($_.Exception.Message)") }
+            try { $null = Stop-RecordedProcessIfOwned $ownedMetadata 'playwright' ${function:Test-PlaywrightListenerIdentity} $false }
+            catch { $cleanupFailures.Add("playwright: $($_.Exception.Message)") }
+            $cleanupDeadline = [DateTime]::UtcNow.AddSeconds([Math]::Min($TimeoutSeconds, 5))
+            while ([DateTime]::UtcNow -lt $cleanupDeadline -and
+                ((Test-RecordedProcessAlive $ownedMetadata 'broker') -or (Test-RecordedProcessAlive $ownedMetadata 'playwright'))) {
+                Start-Sleep -Milliseconds 200
             }
-        } elseif ($brokerLauncher -and -not $brokerLauncher.HasExited) {
-            Stop-Process -Id $brokerLauncher.Id -Force -ErrorAction SilentlyContinue
-        }
-        if ($startedPlaywrightIdentity) {
-            $currentListener = Get-ListenerProcess -ListenerPort $rawPort
-            $currentIdentity = Get-ProcessIdentity -ProcessId $startedPlaywrightIdentity.processId
-            if ($currentListener -and $currentIdentity -and
-                [int]$currentListener.OwningProcess -eq [int]$startedPlaywrightIdentity.processId -and
-                [long]$currentIdentity.creationUtcTicks -eq [long]$startedPlaywrightIdentity.creationUtcTicks -and
-                (Test-PlaywrightListenerIdentity $currentIdentity $rawPort)) {
-                Stop-Process -Id $startedPlaywrightIdentity.processId -Force -ErrorAction SilentlyContinue
+            foreach ($prefix in @('broker', 'playwright')) {
+                if (Test-RecordedProcessAlive $ownedMetadata $prefix) { $survivors.Add($prefix) }
             }
-        } elseif ($playwrightLauncher -and -not $playwrightLauncher.HasExited) {
-            Stop-Process -Id $playwrightLauncher.Id -Force -ErrorAction SilentlyContinue
+            if ($survivors.Count -eq 0 -and $cleanupFailures.Count -eq 0) {
+                if (-not (Remove-MetadataIfOwned $startAttemptId)) {
+                    $cleanupFailures.Add('management record changed ownership before cleanup completion')
+                }
+            } else {
+                $ownedMetadata.state = 'RECOVERY_REQUIRED'
+                $ownedMetadata | Add-Member -NotePropertyName startupError -NotePropertyValue $startupError -Force
+                $ownedMetadata | Add-Member -NotePropertyName cleanupFailures -NotePropertyValue @($cleanupFailures) -Force
+                $ownedMetadata | Add-Member -NotePropertyName survivingComponents -NotePropertyValue @($survivors) -Force
+                Write-Metadata $ownedMetadata
+            }
+        } elseif ($startedBrokerIdentity -or $startedPlaywrightIdentity) {
+            # A metadata write itself may have failed after a process identity
+            # was captured. Reconstruct the exact minimum recovery record from
+            # memory, attempt bounded cleanup, and persist any survivor rather
+            # than abandoning an unowned component.
+            $recoveryMetadata = [ordered]@{
+                schemaVersion = 3
+                state = 'RECOVERY_REQUIRED'
+                startAttemptId = $startAttemptId
+                endpoint = $endpoint
+                host = $bindHost
+                port = $Port
+                startupError = $startupError
+            }
+            if ($startedPlaywrightIdentity) {
+                $recoveryMetadata.playwrightProcessId = $startedPlaywrightIdentity.processId
+                $recoveryMetadata.playwrightPort = $rawPort
+                $recoveryMetadata.playwrightCreationDate = $startedPlaywrightIdentity.creationDate
+                $recoveryMetadata.playwrightCreationUtcTicks = $startedPlaywrightIdentity.creationUtcTicks
+            }
+            if ($startedBrokerIdentity) {
+                $recoveryMetadata.brokerProcessId = $startedBrokerIdentity.processId
+                $recoveryMetadata.brokerPort = $Port
+                $recoveryMetadata.brokerCreationDate = $startedBrokerIdentity.creationDate
+                $recoveryMetadata.brokerCreationUtcTicks = $startedBrokerIdentity.creationUtcTicks
+            }
+            $ownedMetadata = [pscustomobject]$recoveryMetadata
+            try { $null = Stop-RecordedProcessIfOwned $ownedMetadata 'broker' ${function:Test-BrokerListenerIdentity} $false }
+            catch { $cleanupFailures.Add("broker: $($_.Exception.Message)") }
+            try { $null = Stop-RecordedProcessIfOwned $ownedMetadata 'playwright' ${function:Test-PlaywrightListenerIdentity} $false }
+            catch { $cleanupFailures.Add("playwright: $($_.Exception.Message)") }
+            $cleanupDeadline = [DateTime]::UtcNow.AddSeconds([Math]::Min($TimeoutSeconds, 5))
+            while ([DateTime]::UtcNow -lt $cleanupDeadline -and
+                ((Test-RecordedProcessAlive $ownedMetadata 'broker') -or (Test-RecordedProcessAlive $ownedMetadata 'playwright'))) {
+                Start-Sleep -Milliseconds 200
+            }
+            foreach ($prefix in @('broker', 'playwright')) {
+                if (Test-RecordedProcessAlive $ownedMetadata $prefix) { $survivors.Add($prefix) }
+            }
+            if ($survivors.Count -gt 0 -or $cleanupFailures.Count -gt 0) {
+                $ownedMetadata | Add-Member -NotePropertyName cleanupFailures -NotePropertyValue @($cleanupFailures) -Force
+                $ownedMetadata | Add-Member -NotePropertyName survivingComponents -NotePropertyValue @($survivors) -Force
+                try {
+                    Write-Metadata $ownedMetadata
+                    $metadataOwnedByThisStart = $true
+                } catch {
+                    $cleanupFailures.Add("recovery record: $($_.Exception.Message)")
+                }
+            }
         }
-        if (Test-Path -LiteralPath $metadataPath -PathType Leaf) {
-            Remove-Item -LiteralPath $metadataPath -Force -ErrorAction SilentlyContinue
-        }
+        $reportedCleanupFailures = @($cleanupFailures)
+        $reportedSurvivors = @($survivors)
+        $caughtException.Data['cleanupFailures'] = $reportedCleanupFailures
+        $caughtException.Data['survivingComponents'] = $reportedSurvivors
     }
     [Console]::Error.WriteLine((@{
         ok = $false
         command = $Command
-        error = $_.Exception.Message
+        error = $caughtException.Message
         endpoint = $endpoint
+        cleanupFailures = $reportedCleanupFailures
+        survivingComponents = $reportedSurvivors
     } | ConvertTo-Json -Depth 4 -Compress))
     exit 1
+} finally {
+    if ($stateMutexOwned) { $stateMutex.ReleaseMutex() }
+    if ($stateMutex) { $stateMutex.Dispose() }
 }

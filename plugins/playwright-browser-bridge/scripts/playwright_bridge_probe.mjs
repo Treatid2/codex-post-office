@@ -21,6 +21,8 @@ for (let index = 2; index < process.argv.length; index += 1) {
 const endpoint = String(argumentsMap.get("--endpoint") ?? "http://127.0.0.1:8931/mcp");
 const timeoutMs = Number(argumentsMap.get("--timeout-ms") ?? 10_000);
 const browserCheck = argumentsMap.has("--browser-check");
+const describeTools = argumentsMap.has("--describe-tools");
+const includeBrowserState = argumentsMap.has("--include-browser-state");
 let sessionId;
 let nextId = 1;
 
@@ -134,7 +136,11 @@ try {
     if (tabsResponse?.error || tabsResponse?.result?.isError) {
       throw new Error(JSON.stringify(tabsResponse?.error ?? tabsResponse?.result));
     }
-    browserCheckResult = { ok: true, tool: "browser_tabs" };
+    browserCheckResult = {
+      ok: true,
+      tool: "browser_tabs",
+      ...(includeBrowserState ? { result: tabsResponse?.result ?? null } : {}),
+    };
   }
 
   console.log(JSON.stringify({
@@ -144,6 +150,9 @@ try {
     serverInfo: initialize?.result?.serverInfo ?? null,
     toolCount: toolNames.length,
     tools: toolNames,
+    ...(describeTools ? {
+      toolSchemas: tools.map((tool) => ({ name: tool.name, inputSchema: tool.inputSchema })),
+    } : {}),
     securityCheck: { ok: true, blockedTool: "browser_run_code_unsafe" },
     browserCheck: browserCheckResult,
   }));

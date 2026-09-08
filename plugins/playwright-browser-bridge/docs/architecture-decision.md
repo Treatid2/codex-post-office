@@ -7,8 +7,9 @@ and automatic review consume its loopback HTTP endpoint through a narrower servi
 start a raw Playwright MCP instance in every Codex task.
 
 The default browser is a dedicated persistent Chrome profile launched and owned by Playwright. It
-requires one interactive ChatGPT sign-in, then can run headless without touching the user's normal
-Chrome, stealing the visible cursor, installing another extension, or using Google Drive reads.
+requires one interactive ChatGPT sign-in and runs headed for the reliable ChatGPT path without
+touching the user's normal Chrome cursor, installing another extension, or using Google Drive
+reads. Headless remains optional where the target site accepts it.
 
 Attaching to the user's existing Chrome remains a diagnostic mode. It reads and validates both lines
 of `DevToolsActivePort` and uses the exact WebSocket endpoint, but current Chrome consent is
@@ -31,9 +32,16 @@ normal unattended review path. A managed isolated mode remains available for tes
 ## Operational properties
 
 - Exact Playwright MCP version pin.
-- Loopback-only HTTP listener and default host-header restriction.
+- Loopback-only HTTP listener and exact host-header restriction.
+- Bounded ingress bodies, queue depth and bytes, end-to-end request deadlines, and upstream
+  responses.
 - No heartbeat; protocol probes and calls establish point-of-use liveness.
 - One service owner and one long-lived broker session; no reconnect per review caller.
 - Fail-closed process ownership using listener PID, creation time, command line, and port.
+- Serialized lifecycle mutation, interrupted-start recovery, and PID-reuse refusal.
 - Bounded transient output; retained review evidence moves into Post Office custody.
-- No production cut-over or automatic replacement of the current browser transport.
+- Approved production transport for cursor-free local ChatGPT attachment collection when the
+  direct task API cannot expose the file. Direct task reads and sends remain the first choice.
+- Headed bootstrap verifies the isolated ChatGPT profile without returning page content and retains
+  at most one login session. Headless bootstrap is a bounded authentication check; a site
+  interstitial selects headed operation rather than automation-fingerprint evasion.
