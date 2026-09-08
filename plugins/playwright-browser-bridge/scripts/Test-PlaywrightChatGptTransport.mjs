@@ -14,6 +14,7 @@ const execFileAsync = promisify(execFile);
 const scriptsRoot = path.dirname(new URL(import.meta.url).pathname.replace(/^\/(?:([A-Za-z]:))/, "$1"));
 const bootstrapScript = path.join(scriptsRoot, "playwright_chatgpt_bootstrap.mjs");
 const collectorScript = path.join(scriptsRoot, "playwright_chatgpt_collect.mjs");
+const deliveryScript = path.join(scriptsRoot, "playwright_chatgpt_deliver.mjs");
 const testRoot = await fs.mkdtemp(path.join(os.tmpdir(), "post-office-playwright-transport-"));
 const outputRoot = path.join(testRoot, "output");
 await fs.mkdir(outputRoot);
@@ -29,6 +30,11 @@ let deleteCount = 0;
 let sessionCount = 0;
 const deletedSessions = [];
 let previewOpen = false;
+let uploadMenuOpen = false;
+let chooserOpen = false;
+let uploadedPaths = [];
+let sentText = null;
+let draftText = null;
 
 function textResult(text) {
   return { content: [{ type: "text", text }] };
@@ -85,7 +91,9 @@ const server = http.createServer(async (request, response) => {
     result = textResult("### Result\nWait complete");
   } else if (name === "browser_snapshot") {
     result = textResult(authenticated && lastNavigation === "https://chatgpt.com/c/" + threadId
-      ? "### Page snapshot\n- link \"" + attachmentName + "\" [ref=e44]\n- button \"" + attachmentName + "\" [ref=e42]\n  - generic: Document"
+      ? uploadMenuOpen
+        ? "### Page snapshot\n- menuitem \"Upload from computer\" [ref=e11]"
+        : "### Page snapshot\n- button \"Add files and more\" [ref=e10]\n- textbox \"Message ChatGPT\" [ref=e4]\n- button \"Send prompt\" [ref=e5]\n- link \"" + attachmentName + "\" [ref=e44]\n- button \"" + attachmentName + "\" [ref=e42]\n  - generic: Document"
       : authenticated
         ? "### Page snapshot\n- button \"New chat\" [ref=e3]\n- textbox \"Message ChatGPT\" [ref=e4]"
         : "### Page snapshot\n- button \"Log in\" [ref=e1]\n- button \"Sign up\" [ref=e2]");
@@ -99,11 +107,23 @@ const server = http.createServer(async (request, response) => {
       result = textResult("- button \"Download\" [ref=e43]");
     } else if (sought === "REVIEW-CORRELATION") {
       result = textResult("- paragraph \"REVIEW-CORRELATION\" [ref=e41]");
+    } else if (sentText?.includes(sought)) {
+      result = textResult("- paragraph \"" + sought + "\" [ref=e60]");
     } else {
       result = textResult("### Result\nNo matches");
     }
   } else if (name === "browser_click") {
-    if (args.target === "e42") {
+    if (args.target === "e5") {
+      sentText = draftText;
+      result = textResult("### Result\nMessage sent");
+    } else if (args.target === "e10") {
+      uploadMenuOpen = true;
+      result = textResult("### Result\nUpload menu opened");
+    } else if (args.target === "e11") {
+      uploadMenuOpen = false;
+      chooserOpen = true;
+      result = textResult("### Result\nFile chooser opened");
+    } else if (args.target === "e42") {
       previewOpen = true;
       result = textResult("### Result\nPreview opened");
     } else {
@@ -112,6 +132,16 @@ const server = http.createServer(async (request, response) => {
       await fs.writeFile(path.join(outputRoot, "download-" + clickCount + ".md"), payload);
       result = textResult("### Result\nDownload started");
     }
+  } else if (name === "browser_file_upload") {
+    assert.equal(chooserOpen, true);
+    chooserOpen = false;
+    uploadedPaths = args.paths;
+    result = textResult("### Result\nFiles uploaded");
+  } else if (name === "browser_type") {
+    assert.equal(args.target, "e4");
+    assert.equal(args.submit, false);
+    draftText = args.text;
+    result = textResult("### Result\nText entered");
   } else if (name === "browser_press_key") {
     result = textResult("### Result\nKey pressed");
   } else {
@@ -199,6 +229,46 @@ try {
   assert.match(result.stderr, /Required correlation text was not found/);
   assert.equal(clickCount, 1);
 
+  const deliveryPayloadPath = path.join(testRoot, attachmentName);
+  await fs.writeFile(deliveryPayloadPath, payload);
+  const deliveryManifestPath = path.join(testRoot, "delivery.json");
+  const deliveryManifest = {
+    schemaVersion: 1,
+    dispatchId: "PWB-DELIVERY-TEST-0001",
+    threadId,
+    messageId: "MSG-TEST-0001",
+    mailboxId: "TEST-MBX-0001",
+    mailboxGeneration: 1,
+    prompt: "Read the attached retained package and act on its envelope.",
+    attachments: [{
+      path: deliveryPayloadPath,
+      sourceName: attachmentName,
+      sizeBytes: payload.length,
+      sha256: expectedSha256,
+    }],
+  };
+  await fs.writeFile(deliveryManifestPath, JSON.stringify(deliveryManifest));
+
+  result = await run(deliveryScript, ["--timeout-ms", "5000", "--manifest", deliveryManifestPath]);
+  assert.equal(result.code, 0, result.stderr);
+  const delivered = JSON.parse(result.stdout);
+  assert.equal(delivered.replayed, false);
+  assert.equal(delivered.dispatchId, deliveryManifest.dispatchId);
+  assert.deepEqual(uploadedPaths, [deliveryPayloadPath]);
+  assert.match(sentText, /^POST-OFFICE-PLAYWRIGHT-DISPATCH PWB-DELIVERY-TEST-0001\n\n/);
+
+  uploadedPaths = [];
+  result = await run(deliveryScript, ["--timeout-ms", "5000", "--manifest", deliveryManifestPath]);
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).replayed, true);
+  assert.deepEqual(uploadedPaths, []);
+
+  deliveryManifest.attachments[0].sha256 = "0".repeat(64);
+  await fs.writeFile(deliveryManifestPath, JSON.stringify(deliveryManifest));
+  result = await run(deliveryScript, ["--timeout-ms", "5000", "--manifest", deliveryManifestPath]);
+  assert.notEqual(result.code, 0);
+  assert.match(result.stderr, /SHA-256 mismatch/);
+
   console.log(JSON.stringify({
     ok: true,
     authenticationBoundary: true,
@@ -207,6 +277,9 @@ try {
     correlationRequired: true,
     staleFileRejected: true,
     exactHashVerified: true,
+    deliveryManifestBounded: true,
+    deliveryMarkerIdempotent: true,
+    deliveryAttachmentHashVerified: true,
   }));
 } finally {
   await new Promise((resolve) => server.close(resolve));

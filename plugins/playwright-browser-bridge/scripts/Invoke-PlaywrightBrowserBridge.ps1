@@ -3,7 +3,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet('preflight', 'start', 'bootstrap', 'collect-attachment', 'status', 'probe', 'stop')]
+    [ValidateSet('preflight', 'start', 'bootstrap', 'deliver-message', 'collect-attachment', 'status', 'probe', 'stop')]
     [string] $Command,
 
     [ValidateRange(1024, 65535)]
@@ -21,6 +21,7 @@ param(
     [string] $StateRoot = (Join-Path $env:LOCALAPPDATA 'Codex\PostOfficeNext\playwright-browser-bridge'),
 
     [string] $ThreadId,
+    [string] $ManifestPath,
     [string] $AttachmentName,
     [string] $ExpectedSha256,
     [long] $ExpectedBytes = 0,
@@ -35,6 +36,7 @@ $metadataPath = Join-Path $StateRoot 'bridge.json'
 $probeScript = Join-Path $PSScriptRoot 'playwright_bridge_probe.mjs'
 $bootstrapScript = Join-Path $PSScriptRoot 'playwright_chatgpt_bootstrap.mjs'
 $collectorScript = Join-Path $PSScriptRoot 'playwright_chatgpt_collect.mjs'
+$deliveryScript = Join-Path $PSScriptRoot 'playwright_chatgpt_deliver.mjs'
 $brokerScript = Join-Path $PSScriptRoot 'playwright_mcp_broker.mjs'
 $profileRoot = Join-Path $StateRoot 'chrome-profile'
 $startAttemptId = if ($Command -eq 'start') { [Guid]::NewGuid().ToString('N') } else { $null }
@@ -403,6 +405,25 @@ function Invoke-ChatGptAttachmentCollection {
     return ($output -join [Environment]::NewLine | ConvertFrom-Json)
 }
 
+function Invoke-ChatGptDelivery {
+    if (-not $ManifestPath) { throw 'deliver-message requires ManifestPath.' }
+    if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
+        throw "Delivery manifest does not exist: $ManifestPath"
+    }
+    $runtime = Get-NodeRuntime
+    $deliveryArguments = @(
+        $deliveryScript,
+        '--endpoint', $endpoint,
+        '--timeout-ms', ([string]($TimeoutSeconds * 1000)),
+        '--manifest', ([IO.Path]::GetFullPath($ManifestPath))
+    )
+    $output = & $runtime.node @deliveryArguments 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "ChatGPT delivery failed: $($output -join [Environment]::NewLine)"
+    }
+    return ($output -join [Environment]::NewLine | ConvertFrom-Json)
+}
+
 $playwrightLauncher = $null
 $brokerLauncher = $null
 $startedPlaywrightIdentity = $null
@@ -702,6 +723,21 @@ try {
             command = $Command
             bridge = (Get-PublicMetadata $metadata)
             collection = $collection
+        }
+        exit 0
+    }
+
+    if ($Command -eq 'deliver-message') {
+        $identities = Assert-OwnedService $metadata
+        if ($metadata.browserMode -ne 'DedicatedChrome') {
+            throw "ChatGPT delivery requires DedicatedChrome; the running mode is $($metadata.browserMode)."
+        }
+        $delivery = Invoke-ChatGptDelivery
+        Write-Result @{
+            ok = $true
+            command = $Command
+            bridge = (Get-PublicMetadata $metadata)
+            delivery = $delivery
         }
         exit 0
     }

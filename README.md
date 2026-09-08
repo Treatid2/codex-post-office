@@ -15,7 +15,7 @@ The repository is a Codex-compatible marketplace containing three separately ins
 - [automatic-code-review](plugins/automatic-code-review) — a least-authority review requester
   that can use a compatible Post Office backend without granting postal operations.
 - [playwright-browser-bridge](plugins/playwright-browser-bridge) — a singleton, loopback-only
-  Playwright MCP companion for a dedicated review-browser profile.
+  Playwright MCP companion for manifest-bound browser delivery and exact attachment collection.
 
 The separation is intentional. Review requesters do not receive mailbox administration or raw
 browser/CDP authority, and the browser bridge owns no mail, review, or authorisation state.
@@ -30,8 +30,8 @@ This is a **development preview**, not a complete replacement Post Office distri
   runtime.
 - automatic-code-review is a portable, fail-closed client for a separately deployed compatible
   backend. Its trusted administrator must generate a local deployment lock before use.
-- playwright-browser-bridge is operational on supported Windows hosts, but must remain behind a
-  narrow review or Post Office gateway.
+- playwright-browser-bridge is operational on supported Windows hosts for idempotent ChatGPT
+  delivery and exact attachment collection, but its raw MCP endpoint remains local-only.
 
 Functionality will be added in response to demonstrated operational needs. The repository does not
 promise speculative features, perpetual maintenance, compatibility with every Codex release, or

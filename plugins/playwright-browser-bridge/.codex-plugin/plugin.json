@@ -1,7 +1,7 @@
 {
   "name": "playwright-browser-bridge",
   "version": "0.1.0",
-  "description": "Singleton, loopback-only Playwright MCP companion for durable review-browser access.",
+  "description": "Singleton, loopback-only Playwright MCP companion for exact Post Office browser delivery and collection.",
   "author": {
     "name": "Treatid2",
     "url": "https://github.com/Treatid2"
@@ -19,8 +19,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Playwright Browser Bridge",
-    "shortDescription": "Run the dedicated Post Office review browser.",
-    "longDescription": "A Post Office companion that owns one pinned Playwright MCP service and a dedicated persistent Chrome profile. Review callers use the narrow automatic-review interface and never receive raw browser or CDP authority.",
+    "shortDescription": "Run the dedicated Post Office browser transport.",
+    "longDescription": "A Post Office companion that owns one pinned Playwright MCP service and a dedicated persistent Chrome profile. It provides manifest-bound, replay-safe browser delivery and exact attachment collection without granting callers raw browser or CDP authority.",
     "developerName": "Treatid2",
     "category": "Developer Tools",
     "capabilities": [

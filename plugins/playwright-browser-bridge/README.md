@@ -93,6 +93,22 @@ a newly downloaded file whose size and SHA-256 match. Repeated exact controls ar
 declared content identity remains authoritative. The caller must then import that file into Post
 Office custody before clearing the transient bridge output.
 
+For Codex-to-browser delivery, Post Office first issues an immutable JSON dispatch manifest. The
+bridge accepts only that manifest path on the command line; prompt text and attachment paths are
+read from the retained packet:
+
+```powershell
+./scripts/Invoke-PlaywrightBrowserBridge.ps1 deliver-message `
+  -ManifestPath '<post-office-state>/playwright-dispatches/<dispatch-id>/delivery-manifest.json'
+```
+
+The manifest binds one ChatGPT conversation UUID, mailbox generation, message ID, prompt, and up to
+16 exact local attachments (maximum 256 MiB combined). Every attachment is size- and SHA-256-
+verified before navigation. The bridge navigates only to `https://chatgpt.com/c/<uuid>`, uploads the
+files, and prefixes the message with `POST-OFFICE-PLAYWRIGHT-DISPATCH <dispatch-id>`. On retry it
+finds that exact marker and returns the retained receipt without sending a duplicate. Post Office
+records the receipt only after the marker is visible in the bound conversation.
+
 For an isolated disposable browser:
 
 ```powershell
@@ -118,10 +134,10 @@ endpoint. The gateway calls the bridge internally and exposes only review-specif
 
 ## Current state
 
-The dedicated bridge is the active local browser-automation path for Post Office collection when
-the direct task API cannot expose an attachment path. Direct task reads and sends remain preferred
-when they are sufficient. The user's everyday Chrome and `ExistingChrome` are not part of normal
-operation. Secure MCP Tunnel and raw public exposure remain out of scope.
+The dedicated bridge is the active local browser-automation path for exact Post Office delivery and
+for collection when the direct task API cannot expose an attachment path. Direct task reads remain
+preferred when they are sufficient. The user's everyday Chrome and `ExistingChrome` are not part
+of normal operation. Secure MCP Tunnel and raw public exposure remain out of scope.
 
 The verified local deployment is headed because ChatGPT held this profile at an interstitial in
 headless mode.
@@ -135,6 +151,7 @@ banner requires an upstream opt-out or a later pinned version that no longer inj
 
 `npm test` exercises broker admission, queue, session-retirement, and response-size boundaries. It
 also verifies authentication detection, bounded retained login sessions, exact-thread navigation,
-mandatory correlation markers, stale-download rejection, and exact attachment hashing. The
+mandatory correlation markers, stale-download rejection, exact attachment hashing, manifest-bound
+uploads, and delivery-marker replay suppression. The
 PowerShell integration test proves managed-browser operation, protected-root refusal, lifecycle
 serialization, interrupted start recovery, and changed-process-identity refusal.

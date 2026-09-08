@@ -40,8 +40,9 @@ normal unattended review path. A managed isolated mode remains available for tes
 - Fail-closed process ownership using listener PID, creation time, command line, and port.
 - Serialized lifecycle mutation, interrupted-start recovery, and PID-reuse refusal.
 - Bounded transient output; retained review evidence moves into Post Office custody.
-- Approved production transport for cursor-free local ChatGPT attachment collection when the
-  direct task API cannot expose the file. Direct task reads and sends remain the first choice.
+- Approved production transport for cursor-free, manifest-bound local ChatGPT attachment delivery,
+  and for collection when the direct task API cannot expose the file. The delivery marker and exact
+  attachment identities make retries idempotent without a browser heartbeat.
 - Headed bootstrap verifies the isolated ChatGPT profile without returning page content and retains
   at most one login session. Headless bootstrap is a bounded authentication check; a site
   interstitial selects headed operation rather than automation-fingerprint evasion.

@@ -125,6 +125,18 @@ The default endpoint is loopback-only. Never expose the raw Playwright endpoint 
 localtunnel, port forwarding or Secure MCP Tunnel. A tunnel, when required, terminates at a narrow
 Post Office gateway.
 
+The delivery command consumes only an immutable manifest issued by a compatible Post Office
+backend. It verifies each local attachment and suppresses duplicate sends by checking the exact
+dispatch marker in the bound ChatGPT conversation:
+
+~~~powershell
+./plugins/playwright-browser-bridge/scripts/Invoke-PlaywrightBrowserBridge.ps1 deliver-message `
+  -ManifestPath <absolute-delivery-manifest-path>
+~~~
+
+Do not hand-author this manifest. The backend must bind its message, mailbox generation,
+conversation UUID, payload order, byte sizes and SHA-256 values before invoking the bridge.
+
 ## Data and credentials
 
 - Runtime databases, payloads, evidence and browser profiles live outside the repository.

@@ -44,6 +44,13 @@ a tab or extension was refreshed.
 The bridge has no heartbeat. Probe at the point of use and treat normal MCP traffic as liveness.
 Import any result that must be retained into Post Office custody before clearing browser output.
 
+Use `deliver-message` only with an immutable Post Office `delivery-manifest.json`. Do not construct
+the prompt or attachment list in the browser task or place either on the command line. A successful
+result must contain the exact `playwright-chatgpt:<dispatch-id>:<thread-id>` receipt; record that
+through the Post Office receipt operation before treating the message as delivered. Reusing the
+same manifest is the supported recovery path: the exact visible dispatch marker suppresses a
+duplicate send.
+
 Use `collect-attachment` only after an authoritative task read has supplied the exact ChatGPT
 conversation UUID, attachment filename, byte count, SHA-256, and any required review correlation
 markers. The command navigates only to that ChatGPT conversation and returns only newly downloaded,
