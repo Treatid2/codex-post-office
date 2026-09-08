@@ -10,9 +10,10 @@ from typing import Any
 
 from .benchmark import performance_baseline
 from .contracts import generate_contracts, validate_contracts
-from .database import backup_database, initialize_database, inspect_database
+from .database import backup_database, initialize_database, inspect_database, restore_database
 from .diagnostics import PostOfficeError
 from .legacy import capture_state, source_manifest
+from .migration import import_legacy_capture, replay_migration
 from .reconciliation import reconcile_preview
 from .snapshot import create_snapshot
 
@@ -27,7 +28,7 @@ class JsonArgumentParser(argparse.ArgumentParser):
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = JsonArgumentParser(description="Post Office Next P0/P1 sidecar")
+    parser = JsonArgumentParser(description="Post Office Next isolated control-plane preview")
     sub = parser.add_subparsers(dest="command", required=True)
     contracts = sub.add_parser("contracts")
     contracts.add_argument("action", choices=["generate", "validate"])
@@ -51,10 +52,18 @@ def _parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--iterations", type=int, default=5)
     benchmark.add_argument("--capture-root")
     database = sub.add_parser("database")
-    database.add_argument("action", choices=["initialize", "inspect", "backup"])
+    database.add_argument("action", choices=["initialize", "inspect", "backup", "restore"])
     database.add_argument("--path", required=True)
     database.add_argument("--destination")
     database.add_argument("--receipt")
+    database.add_argument("--backup-receipt")
+    migration = sub.add_parser("migration")
+    migration.add_argument("action", choices=["import", "replay"])
+    migration.add_argument("--capture-root")
+    migration.add_argument("--baseline-payload-manifest")
+    migration.add_argument("--payload-delta-manifest")
+    migration.add_argument("--source-root")
+    migration.add_argument("--output-root", required=True)
     return parser
 
 
@@ -85,9 +94,39 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
             return initialize_database(plugin_root, Path(args.path))
         if args.action == "inspect":
             return {"ok": True, **inspect_database(Path(args.path), plugin_root)}
-        if not args.destination or not args.receipt:
-            raise PostOfficeError("PON_INPUT_INVALID", "database backup requires --destination and --receipt")
-        return backup_database(Path(args.path), Path(args.destination), Path(args.receipt), plugin_root)
+        if args.action == "backup":
+            if not args.destination or not args.receipt:
+                raise PostOfficeError("PON_INPUT_INVALID", "database backup requires --destination and --receipt")
+            return backup_database(Path(args.path), Path(args.destination), Path(args.receipt), plugin_root)
+        if not args.destination or not args.receipt or not args.backup_receipt:
+            raise PostOfficeError(
+                "PON_INPUT_INVALID",
+                "database restore requires --path, --backup-receipt, --destination and --receipt",
+            )
+        return restore_database(
+            Path(args.path),
+            Path(args.backup_receipt),
+            Path(args.destination),
+            Path(args.receipt),
+            plugin_root,
+        )
+    if args.command == "migration":
+        if args.action == "import":
+            if not args.capture_root or not args.baseline_payload_manifest or not args.payload_delta_manifest:
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "migration import requires --capture-root, --baseline-payload-manifest and --payload-delta-manifest",
+                )
+            return import_legacy_capture(
+                Path(args.capture_root),
+                Path(args.baseline_payload_manifest),
+                Path(args.payload_delta_manifest),
+                Path(args.output_root),
+                plugin_root,
+            )
+        if not args.source_root:
+            raise PostOfficeError("PON_INPUT_INVALID", "migration replay requires --source-root")
+        return replay_migration(Path(args.source_root), Path(args.output_root), plugin_root)
     raise PostOfficeError("PON_INPUT_INVALID", "Unsupported command")
 
 

@@ -7,11 +7,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$bundledPython = Join-Path $env:USERPROFILE '.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe'
-if (Test-Path -LiteralPath $bundledPython) {
-    $python = $bundledPython
-} else {
-    $python = (Get-Command python -ErrorAction Stop).Source
+$python = $env:CODEX_PYTHON
+if (-not $python) {
+    throw 'CODEX_PYTHON must name a deterministic Python 3 entry point.'
+}
+if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+    throw "The deterministic Codex Python entry point is unavailable: $python"
 }
 & $python (Join-Path $PSScriptRoot 'post_office_next.py') @CommandArgs
 exit $LASTEXITCODE

@@ -39,7 +39,7 @@ class CliBoundaryTests(unittest.TestCase):
         with self.assertRaises(SystemExit) as raised, redirect_stdout(stdout):
             main(["--help"])
         self.assertEqual(raised.exception.code, 0)
-        self.assertIn("Post Office Next P0/P1 sidecar", stdout.getvalue())
+        self.assertIn("Post Office Next isolated control-plane preview", stdout.getvalue())
 
 
 if __name__ == "__main__":

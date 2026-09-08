@@ -42,10 +42,19 @@ root are never valid vNext creation destinations.
 
 Backups hold one read-only source snapshot, verify exact logical identity and event boundary against
 the staged destination, and publish the database and immutable receipt only after all checks pass.
+Restore verifies the supplied backup receipt, physical backup digest, application identity,
+integrity, foreign keys, event boundary, and logical-state root before atomically publishing a new
+destination. It never overwrites an existing database.
 Source, destination, and receipt paths must be pairwise disjoint and new. Every write entry point
 shares the same canonical production-root exclusion before it creates a parent, staging file, or
 final output.
 
-This schema is a P2 foundation, not a complete Post Office. The legacy importer, event replay,
-backup/restore, operation dispatcher, browser bridge, dashboard, and one-time production migration
-remain to be implemented and verified before switchover.
+Migration `0002_deterministic_legacy_import.sql` adds immutable source/artifact metadata, typed raw
+legacy-row retention, normalized migration payload/evidence records, conservative cycle mappings,
+projection coverage, and replay receipt structure. The P2.1 importer and event replay are described
+in [`deterministic-migration-v01.md`](deterministic-migration-v01.md).
+
+This schema is a P2 foundation, not a complete Post Office. The operation dispatcher, complete
+mailbox and review workflows, production browser integration, dashboard, shadow validation, and
+separately authorised one-time production migration remain to be implemented and verified before
+switchover.

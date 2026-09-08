@@ -215,6 +215,30 @@ def validated_external_evidence_kinds(external: Any, capture_root: Path | None =
             raise PostOfficeError("PON_SNAPSHOT_INTEGRITY_FAILURE", "Capture external-evidence manifest path is invalid", {})
         if not isinstance(external.get("manifestSha256"), str) or not SHA256_PATTERN.fullmatch(external["manifestSha256"]):
             raise PostOfficeError("PON_SNAPSHOT_INTEGRITY_FAILURE", "Capture external-evidence manifest hash is invalid", {})
+        retained_manifest_fields = {"manifestCapturedPath", "manifestBytes"}
+        retained_manifest_present = retained_manifest_fields.intersection(external)
+        if retained_manifest_present:
+            if retained_manifest_present != retained_manifest_fields:
+                raise PostOfficeError(
+                    "PON_SNAPSHOT_INTEGRITY_FAILURE",
+                    "Retained external-evidence manifest custody is incomplete",
+                    {},
+                )
+            if (
+                not isinstance(external.get("manifestCapturedPath"), str)
+                or not external["manifestCapturedPath"]
+                or not isinstance(external.get("manifestBytes"), int)
+                or isinstance(external.get("manifestBytes"), bool)
+                or external["manifestBytes"] < 0
+            ):
+                raise PostOfficeError(
+                    "PON_SNAPSHOT_INTEGRITY_FAILURE",
+                    "Retained external-evidence manifest custody is invalid",
+                    {},
+                )
+            if capture_root is not None:
+                contained_member(capture_root, external["manifestCapturedPath"])
+            expected_outer.update(retained_manifest_fields)
     elif provided is False:
         if external.get("manifestSha256") is not None or external.get("records"):
             raise PostOfficeError("PON_SNAPSHOT_INTEGRITY_FAILURE", "Absent external evidence has custody fields", {})
@@ -231,11 +255,16 @@ def validated_external_evidence_kinds(external: Any, capture_root: Path | None =
         kind = record.get("kind")
         if kind in LOCAL_EXTERNAL_EVIDENCE_KINDS:
             required = base_keys | {"sourcePath", "capturedPath", "bytes", "sha256"}
-            if set(record) != required:
+            permitted = required | {"sourceRoot"}
+            if not required.issubset(record) or not set(record).issubset(permitted):
                 raise PostOfficeError("PON_SNAPSHOT_INTEGRITY_FAILURE", "Local migration evidence custody is incomplete", {"record": record})
+            source_path = Path(str(record.get("sourcePath", "")))
+            source_root = record.get("sourceRoot")
             if (
                 not isinstance(record.get("sourcePath"), str)
                 or not record["sourcePath"]
+                or ("sourceRoot" in record and (source_path.is_absolute() or ".." in source_path.parts))
+                or ("sourceRoot" in record and (not isinstance(source_root, str) or not source_root))
                 or not isinstance(record.get("capturedPath"), str)
                 or not record["capturedPath"]
                 or not isinstance(record.get("bytes"), int)
@@ -331,6 +360,16 @@ def _validate_capture_manifest(capture_root: Path, manifest: Any) -> tuple[list[
             if captured_path in expected_members:
                 raise PostOfficeError("PON_SNAPSHOT_INTEGRITY_FAILURE", "Capture member path is duplicated", {"path": captured_path})
             expected_members.add(captured_path)
+    retained_manifest_path = external.get("manifestCapturedPath")
+    if retained_manifest_path:
+        contained_member(capture_root, retained_manifest_path)
+        if retained_manifest_path in expected_members:
+            raise PostOfficeError(
+                "PON_SNAPSHOT_INTEGRITY_FAILURE",
+                "Retained external-evidence manifest path is duplicated",
+                {"path": retained_manifest_path},
+            )
+        expected_members.add(retained_manifest_path)
 
     for path in capture_root.rglob("*"):
         if os.path.lexists(path) and is_link_like(path):
@@ -386,6 +425,19 @@ def create_snapshot(capture_root: Path, output: Path) -> dict[str, Any]:
                 "PON_SNAPSHOT_INTEGRITY_FAILURE",
                 "Captured external migration evidence does not match its manifest",
                 {"record": record},
+            )
+    retained_manifest_path = external_evidence.get("manifestCapturedPath")
+    if retained_manifest_path:
+        path = contained_member(capture_root, retained_manifest_path)
+        if (
+            not path.is_file()
+            or path.stat().st_size != external_evidence["manifestBytes"]
+            or sha256_file(path) != external_evidence["manifestSha256"]
+        ):
+            raise PostOfficeError(
+                "PON_SNAPSHOT_INTEGRITY_FAILURE",
+                "Retained external-evidence manifest does not match its custody record",
+                {"path": retained_manifest_path},
             )
     hub = readonly_connection(capture_root / "hub.sqlite3")
     observer_path = capture_root / "observer.sqlite3"

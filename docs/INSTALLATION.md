@@ -47,15 +47,17 @@ Start a new Codex task after installation or update so newly installed skills ar
 
 ## Post Office Next
 
-The current plugin provides contracts, capture, reconciliation-preview and isolated database
-foundation commands. It must not be pointed at production state for mutation or cutover.
+The current plugin provides contracts, capture, reconciliation-preview, isolated database
+foundation, and deterministic migration/replay/recovery commands. It must not be pointed at
+production state for mutation or cutover.
 
 ~~~powershell
 ./plugins/post-office-next/scripts/Invoke-PostOfficeNext.ps1 contracts validate
 ~~~
 
-The wrapper first looks for the Python runtime bundled with Codex and otherwise resolves python from
-PATH. Its JSON output identifies success or a stable diagnostic.
+Set `CODEX_PYTHON` to the absolute path of a trusted Python 3 entry point before invoking the
+wrapper. Codex-managed installations should use their stable shared Python entry point rather than
+a runtime-cache copy. The wrapper's JSON output identifies success or a stable diagnostic.
 
 ## Automatic code review
 

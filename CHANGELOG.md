@@ -4,6 +4,12 @@ All notable changes to this repository will be documented here.
 
 ## Unreleased
 
+- Implemented the Post Office Next P2.1 deterministic legacy importer.
+- Added exact typed retention for every legacy table and row plus conservative normalized
+  projections.
+- Added verified local content-addressed custody for baseline/delta payloads and retained evidence.
+- Added hash-chained event replay with identical logical-state, event, CAS, and verification roots.
+- Added receipted, fail-closed database restore and completed a full frozen-capture rehearsal.
 - Added manifest-bound Playwright delivery to exact ChatGPT conversations.
 - Added SHA-256 and size validation for every uploaded attachment.
 - Added visible dispatch-marker replay suppression and a stable delivery receipt.

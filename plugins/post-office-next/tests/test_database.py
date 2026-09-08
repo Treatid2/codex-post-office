@@ -14,7 +14,13 @@ SCRIPTS = PLUGIN_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from post_office.database import APPLICATION_ID, backup_database, initialize_database, inspect_database  # noqa: E402
+from post_office.database import (  # noqa: E402
+    APPLICATION_ID,
+    backup_database,
+    initialize_database,
+    inspect_database,
+    restore_database,
+)
 from post_office.diagnostics import PostOfficeError  # noqa: E402
 
 
@@ -61,7 +67,7 @@ class DatabaseFoundationTests(unittest.TestCase):
             self.assertTrue(first["created"])
             self.assertEqual(first["journalMode"], "WAL")
             self.assertEqual(first["database"]["applicationId"], APPLICATION_ID)
-            self.assertEqual(first["database"]["userVersion"], 1)
+            self.assertEqual(first["database"]["userVersion"], 2)
             self.assertEqual(first["database"]["quickCheck"], "ok")
             self.assertEqual(first["database"]["foreignKeyErrors"], [])
             self.assertIn("hub_events", first["database"]["tables"])
@@ -70,7 +76,7 @@ class DatabaseFoundationTests(unittest.TestCase):
             second = initialize_database(PLUGIN_ROOT, path)
             self.assertFalse(second["created"])
             self.assertTrue(all(item["alreadyApplied"] for item in second["migrations"]))
-            self.assertEqual(inspect_database(path)["database"]["userVersion"], 1)
+            self.assertEqual(inspect_database(path)["database"]["userVersion"], 2)
 
     def test_drive_exists_only_in_transient_browser_bridge_table(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -115,12 +121,30 @@ class DatabaseFoundationTests(unittest.TestCase):
             self.assertTrue(receipt.is_file())
             self.assertEqual(result["quickCheck"], "ok")
             self.assertEqual(result["foreignKeyErrors"], [])
-            self.assertEqual(inspect_database(backup)["database"]["userVersion"], 1)
+            self.assertEqual(inspect_database(backup)["database"]["userVersion"], 2)
             self.assertEqual(result["sourceSnapshotRoot"], result["destinationLogicalStateRoot"])
             self.assertEqual(result["sourceLogicalContentsRoot"], result["destinationLogicalContentsRoot"])
             self.assertEqual(result["sourceEventBoundary"], result["destinationEventBoundary"])
             self.assertEqual(result["sourceEventCount"], 1)
             self.assertEqual(inspect_database(backup)["database"]["eventBoundary"]["eventId"], "EVENT-001")
+
+    def test_verified_backup_restore_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "post-office-next.sqlite3"
+            backup = root / "backup.sqlite3"
+            backup_receipt = root / "backup-receipt.json"
+            restored = root / "restored.sqlite3"
+            restore_receipt = root / "restore-receipt.json"
+            initialize_database(PLUGIN_ROOT, source)
+            _insert_event_fixture(source, "EVENT-RESTORE", "5" * 64)
+            original = inspect_database(source)
+            backup_database(source, backup, backup_receipt)
+            result = restore_database(backup, backup_receipt, restored, restore_receipt)
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["sourceLogicalStateRoot"], original["logicalStateRoot"])
+            self.assertEqual(result["destinationLogicalStateRoot"], original["logicalStateRoot"])
+            self.assertEqual(inspect_database(restored)["logicalStateRoot"], original["logicalStateRoot"])
 
     def test_logical_state_distinguishes_equal_event_counts_with_different_content(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -209,13 +233,15 @@ class DatabaseFoundationTests(unittest.TestCase):
             extra = root / "post-office-next-extra.sqlite3"
             initialize_database(PLUGIN_ROOT, extra)
             con = sqlite3.connect(extra)
-            con.execute(
-                "INSERT INTO schema_migrations(version,name,sha256,applied_at) VALUES(2,'unknown',?,'2026-09-04T12:00:00Z')",
-                ("f" * 64,),
-            )
-            con.execute("PRAGMA user_version=2")
-            con.commit()
-            con.close()
+            try:
+                con.execute(
+                    "INSERT INTO schema_migrations(version,name,sha256,applied_at) VALUES(3,'unknown',?,'2026-09-04T12:00:00Z')",
+                    ("f" * 64,),
+                )
+                con.execute("PRAGMA user_version=3")
+                con.commit()
+            finally:
+                con.close()
             with self.assertRaises(PostOfficeError):
                 inspect_database(extra)
 

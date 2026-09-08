@@ -15,22 +15,26 @@ The old and new systems will not operate as dual authorities: the old Post Offic
 unchanged until a fully implemented vNext passes rehearsal and optional shadow validation, followed
 by one separately authorised production switchover.
 
-The exact meanings of P0, P0.1, P1, and P2 are fixed in
+The exact meanings of P0, P0.1, P1, P2, and P2.1 are fixed in
 [`docs/delivery-phases.md`](docs/delivery-phases.md); they are engineering gates, not severity labels.
 
 The current delivery spans the P0/P0.1 contract and isolation gates, P1 evidence tooling, and the
-initial isolated P2 database foundation:
+isolated P2/P2.1 database and migration foundation:
 
 - versioned entity, operation-request, operation-result, and diagnostic JSON Schemas;
 - a complete operation catalogue with per-aggregate concurrency rules;
 - immutable custody manifests for the legacy source;
 - consistent SQLite backups of the live state made through read-only connections;
 - deterministic inventory snapshots from those copies;
-- semantic-cycle/transport-cycle mapping and read-only reconciliation previews; and
+- semantic-cycle/transport-cycle mapping and read-only reconciliation previews;
+- deterministic legacy import with exact typed raw-row preservation and normalized projections;
+- local content-addressed payload/evidence custody with byte-for-byte verification;
+- a hash-chained import journal that rebuilds the database and CAS to identical logical roots; and
+- verified database backup and restore with immutable receipts; and
 - stable, machine-readable diagnostics and receipts.
 
-No mutation, migration, repair, routing, wake, browser poke, automatic review, or cut-over command
-exists in this plugin.
+The migration commands write only a new, isolated rehearsal root. No production mutation, repair,
+routing, wake, browser poke, automatic review, or cut-over command exists in this plugin.
 
 Automatic code review is deliberately a companion tool, not part of this control-plane plugin.
 Its project-independent interface can use Post Office custody, transient browser transport,
@@ -50,6 +54,9 @@ See [`docs/automatic-review-boundary.md`](docs/automatic-review-boundary.md).
 ./scripts/Invoke-PostOfficeNext.ps1 database initialize --path <isolated-vnext.sqlite3>
 ./scripts/Invoke-PostOfficeNext.ps1 database inspect --path <isolated-vnext.sqlite3>
 ./scripts/Invoke-PostOfficeNext.ps1 database backup --path <isolated-vnext.sqlite3> --destination <backup.sqlite3> --receipt <receipt.json>
+./scripts/Invoke-PostOfficeNext.ps1 database restore --path <backup.sqlite3> --backup-receipt <backup-receipt.json> --destination <restored.sqlite3> --receipt <restore-receipt.json>
+./scripts/Invoke-PostOfficeNext.ps1 migration import --capture-root <frozen-capture> --baseline-payload-manifest <manifest.json> --payload-delta-manifest <manifest.json> --output-root <new-rehearsal-root>
+./scripts/Invoke-PostOfficeNext.ps1 migration replay --source-root <imported-rehearsal-root> --output-root <new-replay-root>
 ```
 
 Every operational command emits one JSON result on stdout and returns a non-zero exit code with a
@@ -61,5 +68,8 @@ staging content. Capture rejects linked source members, checks both legacy datab
 content changes across the complete capture interval, and records exact copied database content and
 event boundaries. Local migration evidence counts as present only when its retained bytes, size,
 digest, and contained member path all validate.
+
+See [`docs/deterministic-migration-v01.md`](docs/deterministic-migration-v01.md) for P2.1's
+preservation rules, replay proof, and current limitations.
 
 This plugin is distributed under the Mozilla Public License 2.0; see the repository `LICENSE`.

@@ -25,7 +25,7 @@ browser/CDP authority, and the browser bridge owns no mail, review, or authorisa
 This is a **development preview**, not a complete replacement Post Office distribution.
 
 - The post-office-next plugin implements the P0 contract gate, P0.1 isolation gate, P1 legacy
-  evidence tooling, and the initial P2 database foundation.
+  evidence capture, the P2 database foundation, and the P2.1 deterministic migration rehearsal.
 - It does not yet implement the complete production mailbox, routing, migration, or cutover
   runtime.
 - automatic-code-review is a portable, fail-closed client for a separately deployed compatible
@@ -37,7 +37,8 @@ Functionality will be added in response to demonstrated operational needs. The r
 promise speculative features, perpetual maintenance, compatibility with every Codex release, or
 support for downstream forks.
 
-The delivery-gate names P0, P0.1, P1 and P2 are engineering milestones, not defect severities.
+The delivery-gate names P0, P0.1, P1, P2 and P2.1 are engineering milestones, not defect
+severities. P2.1 is a bounded implementation increment within P2, not a production release.
 Their exact definitions are in
 [delivery-phases.md](plugins/post-office-next/docs/delivery-phases.md).
 

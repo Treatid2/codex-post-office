@@ -12,6 +12,7 @@ from typing import Any
 
 from .canonical import (
     publish_file_exclusive,
+    read_json,
     require_new_output_file,
     require_outside_protected_roots,
     sha256_file,
@@ -173,7 +174,12 @@ def _validate_new_database_path(database_path: Path) -> Path:
     return database_path
 
 
-def initialize_database(plugin_root: Path, database_path: Path) -> dict[str, Any]:
+def initialize_database(
+    plugin_root: Path,
+    database_path: Path,
+    *,
+    migration_applied_at: str | None = None,
+) -> dict[str, Any]:
     plugin_root = plugin_root.resolve(strict=True)
     database_path = _validate_new_database_path(database_path)
     migrations = _migration_files(plugin_root)
@@ -194,6 +200,9 @@ def initialize_database(plugin_root: Path, database_path: Path) -> dict[str, Any
     database_path.parent.mkdir(parents=True, exist_ok=True)
     staged = database_path.with_name(f".{database_path.name}.{uuid.uuid4().hex}.tmp")
     applied: list[dict[str, Any]] = []
+    applied_at = migration_applied_at or _timestamp()
+    if not isinstance(applied_at, str) or not applied_at:
+        raise PostOfficeError("PON_INPUT_INVALID", "Migration application timestamp is invalid", {})
     try:
         con = sqlite3.connect(staged, timeout=30)
         try:
@@ -208,7 +217,7 @@ def initialize_database(plugin_root: Path, database_path: Path) -> dict[str, Any
                 transaction = (
                     "BEGIN IMMEDIATE;\n"
                     + script
-                    + f"\nINSERT INTO schema_migrations(version,name,sha256,applied_at) VALUES({version},'{escaped_name}','{digest}','{_timestamp()}');\n"
+                    + f"\nINSERT INTO schema_migrations(version,name,sha256,applied_at) VALUES({version},'{escaped_name}','{digest}','{applied_at.replace(chr(39), chr(39) * 2)}');\n"
                     + f"PRAGMA user_version={version};\nCOMMIT;\n"
                 )
                 try:
@@ -319,6 +328,124 @@ def backup_database(
         receipt_published = True
         if sha256_file(destination_path) != receipt["sha256"]:
             raise PostOfficeError("PON_DATABASE_INVALID", "Published backup hash changed", {"path": str(destination_path)})
+        return {"ok": True, **receipt, "receipt": str(receipt_path)}
+    except Exception:
+        if receipt_published and os.path.lexists(receipt_path):
+            receipt_path.unlink()
+        if destination_published and os.path.lexists(destination_path):
+            destination_path.unlink()
+        raise
+    finally:
+        _remove_staged_database(staged_database)
+        if os.path.lexists(staged_receipt):
+            staged_receipt.unlink()
+
+
+def restore_database(
+    backup_path: Path,
+    backup_receipt_path: Path,
+    destination_path: Path,
+    receipt_path: Path,
+    plugin_root: Path | None = None,
+) -> dict[str, Any]:
+    backup_path = backup_path.resolve(strict=True)
+    backup_receipt_path = backup_receipt_path.resolve(strict=True)
+    destination_path = _validate_new_database_path(destination_path)
+    receipt_path = require_outside_protected_roots(receipt_path)
+    plugin_root = (plugin_root or Path(__file__).resolve().parents[2]).resolve(strict=True)
+    require_new_output_file(
+        destination_path,
+        inputs=[backup_path, backup_receipt_path, receipt_path],
+    )
+    require_new_output_file(
+        receipt_path,
+        inputs=[backup_path, backup_receipt_path, destination_path],
+    )
+    source_receipt = read_json(backup_receipt_path)
+    if not isinstance(source_receipt, dict) or source_receipt.get("kind") != "POST_OFFICE_NEXT_DATABASE_BACKUP":
+        raise PostOfficeError(
+            "PON_DATABASE_INVALID",
+            "Backup receipt does not describe a Post Office Next database backup",
+            {"receipt": str(backup_receipt_path)},
+        )
+    expected_hash = source_receipt.get("sha256")
+    if not isinstance(expected_hash, str) or expected_hash != sha256_file(backup_path):
+        raise PostOfficeError(
+            "PON_DATABASE_INVALID",
+            "Backup bytes do not match the backup receipt",
+            {"backup": str(backup_path), "receipt": str(backup_receipt_path)},
+        )
+    source_inspection = inspect_database(backup_path, plugin_root)
+    expected_root = source_receipt.get("destinationLogicalStateRoot")
+    if expected_root != source_inspection["logicalStateRoot"]:
+        raise PostOfficeError(
+            "PON_DATABASE_INVALID",
+            "Backup logical state does not match its receipt",
+            {
+                "expectedLogicalStateRoot": expected_root,
+                "observedLogicalStateRoot": source_inspection["logicalStateRoot"],
+            },
+        )
+
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    staged_database = destination_path.with_name(f".{destination_path.name}.{uuid.uuid4().hex}.tmp")
+    staged_receipt = receipt_path.with_name(f".{receipt_path.name}.{uuid.uuid4().hex}.tmp")
+    destination_published = False
+    receipt_published = False
+    try:
+        source = readonly_connection(backup_path)
+        try:
+            source.execute("BEGIN")
+            destination = sqlite3.connect(staged_database)
+            try:
+                source.backup(destination)
+                destination.commit()
+            finally:
+                destination.close()
+            source.rollback()
+        finally:
+            if source.in_transaction:
+                source.rollback()
+            source.close()
+        restored = inspect_database(staged_database, plugin_root)
+        if restored["logicalStateRoot"] != source_inspection["logicalStateRoot"]:
+            raise PostOfficeError(
+                "PON_DATABASE_INVALID",
+                "Restored database does not match the verified backup",
+                {
+                    "backupLogicalStateRoot": source_inspection["logicalStateRoot"],
+                    "restoredLogicalStateRoot": restored["logicalStateRoot"],
+                },
+            )
+        identity = {
+            "schemaVersion": "1",
+            "kind": "POST_OFFICE_NEXT_DATABASE_RESTORE",
+            "createdAt": _timestamp(),
+            "backupReceiptSha256": sha256_file(backup_receipt_path),
+            "backupSha256": expected_hash,
+            "sourceLogicalStateRoot": source_inspection["logicalStateRoot"],
+            "destinationLogicalStateRoot": restored["logicalStateRoot"],
+            "destinationLogicalContentsRoot": restored["database"]["logicalContentsRoot"],
+            "destinationEventBoundary": restored["database"]["eventBoundary"],
+            "destination": str(destination_path),
+            "bytes": staged_database.stat().st_size,
+            "sha256": sha256_file(staged_database),
+            "quickCheck": restored["database"]["quickCheck"],
+            "foreignKeyErrors": restored["database"]["foreignKeyErrors"],
+        }
+        receipt = {**identity, "receiptSha256": sha256_json(identity)}
+        write_json(staged_receipt, receipt)
+        publish_file_exclusive(staged_database, destination_path)
+        destination_published = True
+        publish_file_exclusive(staged_receipt, receipt_path)
+        receipt_published = True
+        if sha256_file(destination_path) != receipt["sha256"]:
+            raise PostOfficeError(
+                "PON_DATABASE_INVALID",
+                "Published restored database hash changed",
+                {"path": str(destination_path)},
+            )
         return {"ok": True, **receipt, "receipt": str(receipt_path)}
     except Exception:
         if receipt_published and os.path.lexists(receipt_path):

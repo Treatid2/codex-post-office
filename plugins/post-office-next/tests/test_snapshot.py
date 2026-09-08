@@ -249,6 +249,36 @@ class SnapshotTests(unittest.TestCase):
             snapshot = read_json(snapshot_path)
             self.assertEqual(snapshot["migrationEvidence"]["networkAccess"], "NONE")
 
+    def test_snapshot_accepts_retained_source_root_provenance_without_dereferencing_it(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state = root / "state"
+            capture = root / "capture"
+            _create_legacy_state(state)
+            register = root / "project-register.json"
+            register.write_text('{"project":"FGPM"}\n', encoding="utf-8")
+            evidence_manifest = root / "migration-evidence.json"
+            evidence_manifest.write_text(json.dumps({
+                "schemaVersion": "1",
+                "records": [{"kind": "PROJECT_REGISTER", "logicalId": "FGPM-REGISTER-001",
+                             "sourcePath": str(register), "relatedEntityType": "Project",
+                             "relatedEntityId": "FGPM"}],
+            }), encoding="utf-8")
+            capture_state(state, capture, evidence_manifest)
+            manifest_path = capture / "capture-manifest.json"
+            manifest = read_json(manifest_path)
+            manifest["externalEvidence"]["records"][0]["sourceRoot"] = str(root)
+            manifest["externalEvidence"]["records"][0]["sourcePath"] = register.name
+            identity_keys = [
+                "schemaVersion", "sourceStateRoot", "legacySchemaVersions", "databases", "files",
+                "externalEvidence", "excluded",
+            ]
+            manifest["captureRoot"] = sha256_json({key: manifest[key] for key in identity_keys})
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            result = create_snapshot(capture, root / "snapshot.json")
+            self.assertEqual(result["counts"]["migrationEvidence"], 1)
+
     def test_database_only_source_changes_abort_capture_without_publication(self) -> None:
         for database_name in ("hub", "observer"):
             with self.subTest(database=database_name), tempfile.TemporaryDirectory() as temporary:

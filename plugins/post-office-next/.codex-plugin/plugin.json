@@ -1,7 +1,7 @@
 {
   "name": "post-office-next",
   "version": "0.1.0",
-  "description": "Side-by-side contract, snapshot, and reconciliation tooling for the next Codex Comms control plane.",
+  "description": "Isolated contracts, legacy capture, deterministic migration replay, and recovery tooling for the next Codex Comms control plane.",
   "author": {
     "name": "Treatid2",
     "url": "https://github.com/Treatid2"
@@ -9,19 +9,29 @@
   "homepage": "https://github.com/Treatid2/codex-post-office/tree/main/plugins/post-office-next",
   "repository": "https://github.com/Treatid2/codex-post-office",
   "license": "MPL-2.0",
-  "keywords": ["codex", "communications", "mailbox", "workflow", "sqlite"],
+  "keywords": [
+    "codex",
+    "communications",
+    "mailbox",
+    "workflow",
+    "sqlite"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Post Office Next",
-    "shortDescription": "Inspect and reconcile Codex Comms safely.",
-    "longDescription": "Post Office Next provides versioned operation contracts and read-only legacy-state snapshot and reconciliation-preview tools. It does not mutate or replace the live Codex Comms service.",
+    "shortDescription": "Rehearse Post Office migration safely.",
+    "longDescription": "Post Office Next provides versioned contracts, read-only legacy capture, isolated deterministic import and event replay, local content-addressed retention, and verified backup/restore. It does not mutate or replace the live Codex Comms service.",
     "developerName": "Treatid2",
     "category": "Developer Tools",
-    "capabilities": ["Read", "Write"],
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
     "websiteURL": "https://github.com/Treatid2/codex-post-office",
     "defaultPrompt": [
       "Inspect the Post Office Next contracts.",
-      "Create a read-only migration snapshot."
+      "Create a read-only migration snapshot.",
+      "Rehearse a deterministic Post Office migration in an isolated destination."
     ]
   }
 }
