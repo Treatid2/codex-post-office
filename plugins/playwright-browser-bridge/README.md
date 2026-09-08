@@ -9,9 +9,11 @@ profile. It does not own review queues, packages, results, authority, or retaine
 
 The runtime supports three browser modes:
 
-- `DedicatedChrome` is the normal default. Playwright owns a persistent review-only profile,
-  which needs one interactive ChatGPT sign-in. Headed operation is the reliable ChatGPT transport;
-  headless is optional only where the site accepts it.
+- `DedicatedChrome` is the normal default. The bridge launches ordinary Chrome with a persistent
+  review-only profile and an ephemeral loopback CDP listener, then makes Playwright attach to that
+  exact listener. This avoids Chrome's unstable automation-launched session while retaining one
+  bounded service owner. The profile needs one interactive ChatGPT sign-in. Headed operation is
+  the reliable ChatGPT transport; headless is optional only where the site accepts it.
 - `ManagedChrome` is an isolated, disposable browser for tests and recovery.
 - `ExistingChrome` attaches to the user's live Chrome through CDP and is diagnostic-only because
   current Chrome versions may request consent for every new CDP connection.
@@ -86,9 +88,12 @@ courier can then collect that one exact file through the dedicated profile:
 
 The manifest binds the collection ID, sweep, browser mailbox generation, ChatGPT conversation,
 source turn, attachment reference, filename, byte count, SHA-256 and required correlation markers.
-The collector is restricted to `https://chatgpt.com/c/<uuid>`, performs a bounded conversation scan
-for exact-named actionable attachment controls, rejects stale output files, and returns only a
-newly downloaded hash-matching file plus the exact
+The collector is restricted to `https://chatgpt.com/c/<uuid>`, verifies the exact source-turn UUID
+and its correlation markers, and finds only the exact-named attachment card. A short-lived pinned
+Playwright client attaches to the bridge-owned Chrome listener, captures the exact signed
+attachment request, and retrieves it with that browser context's authenticated request client. This
+avoids navigating the tab to a download URL that Chrome extensions may block. It returns only a
+newly retrieved hash-matching file plus the exact
 `playwright-chatgpt-collection:<collection-id>:<thread-id>:<sha256>` receipt. A compatible Post
 Office backend must rehash and retain those bytes atomically before the transient bridge copy is
 cleared. Replaying a retained collection returns its existing custody receipt; an interrupted
@@ -120,6 +125,10 @@ Runtime state defaults to `%LOCALAPPDATA%\Codex\PostOfficeNext\playwright-browse
 operational state, not repository content. Review artifacts must be imported into Post Office's
 content-addressed custody before bridge output is cleared or expires.
 
+The first collection installs the exact `playwright-core` version paired with the pinned MCP into
+that operational state root. Its version is verified before use; it is not taken from a Codex
+runtime cache or from `PATH`.
+
 ## Security boundary
 
 Browser automation has authority over the dedicated review session. Keep the HTTP listener on
@@ -143,10 +152,9 @@ of normal operation. Secure MCP Tunnel and raw public exposure remain out of sco
 The verified local deployment is headed because ChatGPT held this profile at an interstitial in
 headless mode.
 
-Pinned Playwright MCP `0.0.80` injects Chrome's
-`--disable-blink-features=AutomationControlled` launch argument, so Chrome displays an unsupported
-flag banner. The bridge does not add stealth plugins or modify browser fingerprints; removing that
-banner requires an upstream opt-out or a later pinned version that no longer injects the argument.
+The normal dedicated path does not add stealth flags or modify browser fingerprints. Playwright's
+disposable `ManagedChrome` test mode may show flags selected by the pinned upstream MCP package;
+it is not the production ChatGPT transport.
 
 ## Tests
 

@@ -35,6 +35,7 @@ let chooserOpen = false;
 let uploadedPaths = [];
 let sentText = null;
 let draftText = null;
+let hoveredTarget = null;
 
 function textResult(text) {
   return { content: [{ type: "text", text }] };
@@ -93,7 +94,7 @@ const server = http.createServer(async (request, response) => {
     result = textResult(authenticated && lastNavigation === "https://chatgpt.com/c/" + threadId
       ? uploadMenuOpen
         ? "### Page snapshot\n- menuitem \"Upload from computer\" [ref=e11]"
-        : "### Page snapshot\n- button \"Add files and more\" [ref=e10]\n- textbox \"Message ChatGPT\" [ref=e4]\n- button \"Send prompt\" [ref=e5]\n- button \"" + attachmentName + "\" [ref=e40]\n- button \"" + attachmentName + "\" [ref=e42]\n  - generic: Document"
+        : "### Page snapshot\n- button \"Add files and more\" [ref=e10]\n- textbox \"Message ChatGPT\" [ref=e4]\n- button \"Send prompt\" [ref=e5]\n- button \"" + attachmentName + "\" [ref=e40]\n- button \"" + attachmentName + "\" [ref=e42]\n  - generic: Document" + (hoveredTarget === "e42" ? "\n- button \"Download file\" [ref=e41]" : "")
       : authenticated
         ? "### Page snapshot\n- button \"New chat\" [ref=e3]\n- textbox \"Message ChatGPT\" [ref=e4]"
         : "### Page snapshot\n- button \"Log in\" [ref=e1]\n- button \"Sign up\" [ref=e2]");
@@ -123,7 +124,7 @@ const server = http.createServer(async (request, response) => {
       uploadMenuOpen = false;
       chooserOpen = true;
       result = textResult("### Result\nFile chooser opened");
-    } else if (args.target === "e40") {
+    } else if (args.target === "e40" || args.target === "e41") {
       clickCount += 1;
       await fs.writeFile(path.join(outputRoot, "download-" + clickCount + ".md"), payload);
       result = textResult("### Result\nDownload started");
@@ -146,6 +147,9 @@ const server = http.createServer(async (request, response) => {
     assert.equal(args.submit, false);
     draftText = args.text;
     result = textResult("### Result\nText entered");
+  } else if (name === "browser_hover") {
+    hoveredTarget = args.target;
+    result = textResult("### Result\nHover complete");
   } else if (name === "browser_press_key") {
     result = textResult("### Result\nKey pressed");
   } else {

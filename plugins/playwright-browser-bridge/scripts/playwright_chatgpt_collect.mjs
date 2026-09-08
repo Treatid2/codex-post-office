@@ -155,6 +155,27 @@ function resultText(result) {
     .join("\n");
 }
 
+function nearbyActionReferences(snapshotText, parentReference, actionName) {
+  const lines = snapshotText.split(/\r?\n/);
+  const parentIndex = lines.findIndex((line) =>
+    new RegExp(`\\[ref=${parentReference.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\]`).test(line)
+  );
+  if (parentIndex < 0) return [];
+  const parentIndentation = lines[parentIndex].match(/^\s*/)?.[0].length ?? 0;
+  const references = [];
+  for (let index = parentIndex + 1; index < lines.length; index += 1) {
+    if (!lines[index].trim()) continue;
+    const indentation = lines[index].match(/^\s*/)?.[0].length ?? 0;
+    if (indentation < parentIndentation) break;
+    const match = lines[index].match(new RegExp(
+      `^\\s*-\\s+button\\s+"${actionName.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}"\\s+\\[ref=([^\\]\\s]+)\\]`,
+      "i",
+    ));
+    if (match) references.push(match[1]);
+  }
+  return [...new Set(references)];
+}
+
 async function collectFiles(directory) {
   const collected = [];
   const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -308,7 +329,39 @@ try {
   const deadline = Date.now() + timeoutMs;
   let verified;
   let lastActionError = "No candidate was actionable";
+  // The document card's download affordance is hover-only in ChatGPT. Use it
+  // before opening the artifact preview: the current upstream MCP can lose its
+  // target while a large preview is still preparing.
+  for (const candidate of [...attachmentCandidates].sort((left, right) => right.score - left.score)) {
+    if (candidate.score < 1) continue;
+    try {
+      await callTool("browser_hover", {
+        target: candidate.reference,
+        element: `attachment ${attachmentName}`,
+      });
+      const hoveredSnapshot = resultText(await callTool("browser_snapshot", { depth: 16 }));
+      const directDownloads = nearbyActionReferences(
+        hoveredSnapshot, candidate.reference, "Download file",
+      );
+      if (directDownloads.length !== 1) continue;
+      await callTool("browser_click", {
+        target: directDownloads[0],
+        element: `Download ${attachmentName}`,
+      });
+      const candidateDeadline = Math.min(deadline, Date.now() + 15_000);
+      while (Date.now() < candidateDeadline) {
+        verified = await findVerifiedDownload(baseline, clickStartedAt);
+        if (verified) break;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      if (verified) break;
+      lastActionError = "Hover download did not match the declared content identity";
+    } catch (error) {
+      lastActionError = String(error?.message ?? error);
+    }
+  }
   for (const candidate of attachmentCandidates) {
+    if (verified) break;
     try {
       await callTool("browser_click", {
         target: candidate.reference,

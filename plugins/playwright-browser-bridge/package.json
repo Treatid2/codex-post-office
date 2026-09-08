@@ -12,7 +12,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node scripts/Test-PlaywrightMcpBroker.mjs && node scripts/Test-PlaywrightChatGptTransport.mjs"
+    "test": "node --check scripts/playwright_chatgpt_collect_direct.mjs && node scripts/Test-PlaywrightMcpBroker.mjs && node scripts/Test-PlaywrightChatGptTransport.mjs"
   },
   "dependencies": {
     "@playwright/mcp": "0.0.80"

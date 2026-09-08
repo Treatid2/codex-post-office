@@ -31,9 +31,11 @@ $metadataPath = Join-Path $StateRoot 'bridge.json'
 $probeScript = Join-Path $PSScriptRoot 'playwright_bridge_probe.mjs'
 $bootstrapScript = Join-Path $PSScriptRoot 'playwright_chatgpt_bootstrap.mjs'
 $collectorScript = Join-Path $PSScriptRoot 'playwright_chatgpt_collect.mjs'
+$directCollectorScript = Join-Path $PSScriptRoot 'playwright_chatgpt_collect_direct.mjs'
 $deliveryScript = Join-Path $PSScriptRoot 'playwright_chatgpt_deliver.mjs'
 $brokerScript = Join-Path $PSScriptRoot 'playwright_mcp_broker.mjs'
 $profileRoot = Join-Path $StateRoot 'chrome-profile'
+$playwrightCoreVersion = '1.63.0-alpha-2026-08-31'
 $startAttemptId = if ($Command -eq 'start') { [Guid]::NewGuid().ToString('N') } else { $null }
 $metadataOwnedByThisStart = $false
 $stateMutex = $null
@@ -141,8 +143,9 @@ function Resolve-Executable([string[]] $Names) {
 function Get-NodeRuntime {
     $node = Resolve-Executable @('node.exe', 'node')
     $npx = Resolve-Executable @('npx.cmd', 'npx')
-    if (-not $node -or -not $npx) {
-        throw 'Node.js and npx are required.'
+    $npm = Resolve-Executable @('npm.cmd', 'npm')
+    if (-not $node -or -not $npx -or -not $npm) {
+        throw 'Node.js, npm, and npx are required.'
     }
     $versionText = (& $node --version).Trim()
     if ($LASTEXITCODE -ne 0 -or $versionText -notmatch '^v(?<major>\d+)\.') {
@@ -151,7 +154,64 @@ function Get-NodeRuntime {
     if ([int]$Matches.major -lt 20) {
         throw "Node.js 20 or newer is required; found $versionText."
     }
-    return @{ node = $node; npx = $npx; version = $versionText }
+    return @{ node = $node; npm = $npm; npx = $npx; version = $versionText }
+}
+
+function Get-PlaywrightCoreRuntime($Runtime) {
+    $runtimeRoot = Join-Path $StateRoot 'node-runtime'
+    $packagePath = Join-Path $runtimeRoot 'node_modules\playwright-core\package.json'
+    $valid = $false
+    if (Test-Path -LiteralPath $packagePath -PathType Leaf) {
+        try {
+            $package = Get-Content -Raw -LiteralPath $packagePath | ConvertFrom-Json
+            $valid = [string]$package.version -eq $playwrightCoreVersion
+        } catch { $valid = $false }
+    }
+    if (-not $valid) {
+        New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
+        $installOutput = & $Runtime.npm install --prefix $runtimeRoot --no-save --no-package-lock `
+            --ignore-scripts --no-audit --no-fund "playwright-core@$playwrightCoreVersion" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "Unable to install the pinned Playwright collection runtime: $($installOutput -join [Environment]::NewLine)"
+        }
+        if (-not (Test-Path -LiteralPath $packagePath -PathType Leaf)) {
+            throw 'The pinned Playwright collection runtime installation did not produce its package manifest.'
+        }
+        $package = Get-Content -Raw -LiteralPath $packagePath | ConvertFrom-Json
+        if ([string]$package.version -ne $playwrightCoreVersion) {
+            throw "The Playwright collection runtime version is $($package.version), expected $playwrightCoreVersion."
+        }
+    }
+    return $runtimeRoot
+}
+
+function Get-ChromeExecutable {
+    foreach ($candidate in @(
+        'C:\Program Files\Google\Chrome\Application\chrome.exe',
+        'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe'
+    )) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+    }
+    throw 'Google Chrome is required for the dedicated browser profile.'
+}
+
+function Get-DedicatedChromeCdpEndpoint {
+    $activePortPath = Join-Path $profileRoot 'DevToolsActivePort'
+    if (-not (Test-Path -LiteralPath $activePortPath -PathType Leaf)) { return $null }
+    $activePort = @(Get-Content -LiteralPath $activePortPath)
+    if ($activePort.Count -lt 2 -or $activePort[0] -notmatch '^\d{1,5}$' -or
+        [int]$activePort[0] -lt 1 -or [int]$activePort[0] -gt 65535 -or
+        $activePort[1] -notmatch '^/devtools/browser/[A-Za-z0-9-]+$') { return $null }
+    $chromePort = [int]$activePort[0]
+    $listener = Get-NetTCPConnection -State Listen -LocalPort $chromePort -ErrorAction SilentlyContinue |
+        Where-Object { $_.LocalAddress -in @('127.0.0.1', '::1') } |
+        Select-Object -First 1
+    if (-not $listener) { return $null }
+    return @{
+        endpoint = "ws://127.0.0.1:${chromePort}$($activePort[1])"
+        port = $chromePort
+        processId = [int]$listener.OwningProcess
+    }
 }
 
 function Get-ChromeCdpEndpoint {
@@ -247,6 +307,17 @@ function Test-BrokerListenerIdentity($Identity, [int] $ListenerPort) {
     )
 }
 
+function Test-DedicatedChromeIdentity($Identity, [int] $ListenerPort) {
+    if (-not $Identity -or -not $Identity.commandLine) { return $false }
+    $profilePattern = [regex]::Escape([IO.Path]::GetFullPath($profileRoot))
+    return (
+        $Identity.executablePath -and
+        [IO.Path]::GetFileName([string]$Identity.executablePath) -eq 'chrome.exe' -and
+        $Identity.commandLine -match '--remote-debugging-port(?:=|\s+)(?:0|[0-9]+)' -and
+        $Identity.commandLine -match $profilePattern
+    )
+}
+
 function Read-Metadata {
     if (-not (Test-Path -LiteralPath $metadataPath -PathType Leaf)) { return $null }
     return Get-Content -Raw -LiteralPath $metadataPath | ConvertFrom-Json
@@ -287,7 +358,11 @@ function Assert-ProcessIdentity($Metadata, [string] $Prefix, [scriptblock] $Matc
 function Assert-OwnedService($Metadata) {
     $broker = Assert-ProcessIdentity $Metadata 'broker' ${function:Test-BrokerListenerIdentity}
     $playwright = Assert-ProcessIdentity $Metadata 'playwright' ${function:Test-PlaywrightListenerIdentity}
-    return @{ broker = $broker; playwright = $playwright }
+    $result = @{ broker = $broker; playwright = $playwright }
+    if ($Metadata.PSObject.Properties.Name -contains 'chromeProcessId') {
+        $result.chrome = Assert-ProcessIdentity $Metadata 'chrome' ${function:Test-DedicatedChromeIdentity}
+    }
+    return $result
 }
 
 function Stop-RecordedProcessIfOwned($Metadata, [string] $Prefix, [scriptblock] $Matcher, [bool] $RequireListener = $true) {
@@ -325,12 +400,15 @@ function Remove-StaleManagedState($Metadata) {
     catch { $failures.Add($_.Exception.Message) }
     try { $null = Stop-RecordedProcessIfOwned $Metadata 'playwright' ${function:Test-PlaywrightListenerIdentity} $requireListeners }
     catch { $failures.Add($_.Exception.Message) }
+    try { $null = Stop-RecordedProcessIfOwned $Metadata 'chrome' ${function:Test-DedicatedChromeIdentity} $requireListeners }
+    catch { $failures.Add($_.Exception.Message) }
     $deadline = [DateTime]::UtcNow.AddSeconds([Math]::Min($TimeoutSeconds, 5))
     while ([DateTime]::UtcNow -lt $deadline -and
-        ((Test-RecordedProcessAlive $Metadata 'broker') -or (Test-RecordedProcessAlive $Metadata 'playwright'))) {
+        ((Test-RecordedProcessAlive $Metadata 'broker') -or (Test-RecordedProcessAlive $Metadata 'playwright') -or
+         (Test-RecordedProcessAlive $Metadata 'chrome'))) {
         Start-Sleep -Milliseconds 200
     }
-    foreach ($prefix in @('broker', 'playwright')) {
+    foreach ($prefix in @('broker', 'playwright', 'chrome')) {
         if (Test-RecordedProcessAlive $Metadata $prefix) { $failures.Add("The recorded $prefix process survived recovery cleanup.") }
     }
     if ($failures.Count) {
@@ -382,10 +460,14 @@ function Invoke-ChatGptAttachmentCollection {
         throw "Collection manifest does not exist: $ManifestPath"
     }
     $runtime = Get-NodeRuntime
+    $playwrightRuntimeRoot = Get-PlaywrightCoreRuntime $runtime
+    $dedicatedCdp = Get-DedicatedChromeCdpEndpoint
+    if (-not $dedicatedCdp) { throw 'The managed dedicated Chrome CDP endpoint is unavailable.' }
     $outputRoot = Join-Path $StateRoot 'output'
     $collectorArguments = @(
-        $collectorScript,
-        '--endpoint', $endpoint,
+        $directCollectorScript,
+        '--cdp-endpoint', ([string]$dedicatedCdp.endpoint),
+        '--playwright-root', $playwrightRuntimeRoot,
         '--timeout-ms', ([string]($TimeoutSeconds * 1000)),
         '--output-root', $outputRoot,
         '--manifest', ([IO.Path]::GetFullPath($ManifestPath))
@@ -418,9 +500,12 @@ function Invoke-ChatGptDelivery {
 
 $playwrightLauncher = $null
 $brokerLauncher = $null
+$chromeLauncher = $null
 $startedPlaywrightIdentity = $null
 $startedBrokerIdentity = $null
+$startedChromeIdentity = $null
 $rawPort = $null
+$chromePort = $null
 
 try {
     if ($Command -in @('start', 'stop')) {
@@ -452,6 +537,7 @@ try {
             node = $runtime.node
             nodeVersion = $runtime.version
             npx = $runtime.npx
+            npm = $runtime.npm
             package = "@playwright/mcp@$packageVersion"
             endpoint = $endpoint
             browserMode = $BrowserMode
@@ -505,7 +591,46 @@ try {
             $arguments += @('--cdp-endpoint', $chromeCdpEndpoint)
         } elseif ($BrowserMode -eq 'DedicatedChrome') {
             New-Item -ItemType Directory -Path $profileRoot -Force | Out-Null
-            $arguments += @('--browser', 'chrome', '--user-data-dir', $profileRoot)
+            $dedicatedProcesses = @(Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" |
+                Where-Object { $_.CommandLine -and $_.CommandLine -match [regex]::Escape($profileRoot) })
+            if ($dedicatedProcesses.Count) {
+                throw 'The dedicated Chrome profile is already owned by an unmanaged process.'
+            }
+            $activePortPath = Join-Path $profileRoot 'DevToolsActivePort'
+            Remove-Item -LiteralPath $activePortPath -Force -ErrorAction SilentlyContinue
+            $chromeExecutable = Get-ChromeExecutable
+            $chromeArguments = @(
+                '--remote-debugging-port=0',
+                "--user-data-dir=$profileRoot",
+                '--no-first-run',
+                'about:blank'
+            ) | ForEach-Object { ConvertTo-NativeArgument ([string]$_) }
+            $chromeLauncher = Start-Process -FilePath $chromeExecutable `
+                -ArgumentList $chromeArguments -PassThru
+            $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+            $dedicatedCdp = $null
+            while ([DateTime]::UtcNow -lt $deadline) {
+                if ($chromeLauncher.HasExited) {
+                    throw "Dedicated Chrome exited during startup with code $($chromeLauncher.ExitCode)."
+                }
+                $dedicatedCdp = Get-DedicatedChromeCdpEndpoint
+                if ($dedicatedCdp) { break }
+                Start-Sleep -Milliseconds 250
+            }
+            if (-not $dedicatedCdp) {
+                throw 'Dedicated Chrome did not expose its loopback CDP endpoint in time.'
+            }
+            $chromePort = [int]$dedicatedCdp.port
+            $chromeIdentity = Get-ProcessIdentity -ProcessId ([int]$dedicatedCdp.processId)
+            if (-not $chromeIdentity -or
+                -not (Test-DedicatedChromeIdentity $chromeIdentity $chromePort)) {
+                throw 'The dedicated Chrome listener identity could not be verified.'
+            }
+            $startedChromeIdentity = $chromeIdentity
+            $arguments += @(
+                '--cdp-endpoint', [string]$dedicatedCdp.endpoint,
+                '--shared-browser-context'
+            )
         } else {
             $arguments += @('--browser', 'chrome', '--isolated')
         }
@@ -541,7 +666,7 @@ try {
         $startedPlaywrightIdentity = $playwrightIdentity
 
         $partialMetadata = [ordered]@{
-            schemaVersion = 3
+            schemaVersion = 4
             state = 'STARTING'
             startAttemptId = $startAttemptId
             package = "@playwright/mcp@$packageVersion"
@@ -553,6 +678,13 @@ try {
             playwrightPort = $rawPort
             playwrightCreationDate = $playwrightIdentity.creationDate
             playwrightCreationUtcTicks = $playwrightIdentity.creationUtcTicks
+        }
+        if ($startedChromeIdentity) {
+            $partialMetadata.chromeProcessId = $startedChromeIdentity.processId
+            $partialMetadata.chromePort = $chromePort
+            $partialMetadata.chromeCreationDate = $startedChromeIdentity.creationDate
+            $partialMetadata.chromeCreationUtcTicks = $startedChromeIdentity.creationUtcTicks
+            $partialMetadata.chromeExecutablePath = $startedChromeIdentity.executablePath
         }
         Write-Metadata $partialMetadata
         $metadataOwnedByThisStart = $true
@@ -617,7 +749,7 @@ try {
         $partialMetadata.brokerCreationUtcTicks = $brokerIdentity.creationUtcTicks
         Write-Metadata $partialMetadata
         $metadata = [ordered]@{
-            schemaVersion = 3
+            schemaVersion = 4
             state = 'RUNNING'
             startAttemptId = $startAttemptId
             package = "@playwright/mcp@$packageVersion"
@@ -645,6 +777,13 @@ try {
             brokerStdoutPath = $brokerStdoutPath
             brokerStderrPath = $brokerStderrPath
         }
+        if ($startedChromeIdentity) {
+            $metadata.chromeProcessId = $startedChromeIdentity.processId
+            $metadata.chromePort = $chromePort
+            $metadata.chromeCreationDate = $startedChromeIdentity.creationDate
+            $metadata.chromeCreationUtcTicks = $startedChromeIdentity.creationUtcTicks
+            $metadata.chromeExecutablePath = $startedChromeIdentity.executablePath
+        }
         Write-Metadata $metadata
 
         $probe = Invoke-Probe -RequireBrowser:$BrowserCheck
@@ -671,15 +810,19 @@ try {
     if ($Command -eq 'status') {
         $identities = Assert-OwnedService $metadata
         $probe = Invoke-Probe -RequireBrowser:$BrowserCheck
+        $publicProcesses = @{
+            broker = (Get-PublicProcessIdentity $identities.broker)
+            playwright = (Get-PublicProcessIdentity $identities.playwright)
+        }
+        if ($identities.chrome) {
+            $publicProcesses.chrome = Get-PublicProcessIdentity $identities.chrome
+        }
         Write-Result @{
             ok = $true
             command = $Command
             running = $true
             bridge = (Get-PublicMetadata $metadata)
-            processes = @{
-                broker = (Get-PublicProcessIdentity $identities.broker)
-                playwright = (Get-PublicProcessIdentity $identities.playwright)
-            }
+            processes = $publicProcesses
             probe = $probe
         }
         exit 0
@@ -698,6 +841,7 @@ try {
             processes = @{
                 broker = (Get-PublicProcessIdentity $identities.broker)
                 playwright = (Get-PublicProcessIdentity $identities.playwright)
+                chrome = (Get-PublicProcessIdentity $identities.chrome)
             }
             bootstrap = $bootstrap
         }
@@ -744,10 +888,12 @@ try {
             Start-Sleep -Milliseconds 200
         }
         $null = Stop-RecordedProcessIfOwned $metadata 'playwright' ${function:Test-PlaywrightListenerIdentity}
+        $null = Stop-RecordedProcessIfOwned $metadata 'chrome' ${function:Test-DedicatedChromeIdentity}
         $deadline = [DateTime]::UtcNow.AddSeconds([Math]::Min($TimeoutSeconds, 5))
         while ([DateTime]::UtcNow -lt $deadline -and
             ((Get-Process -Id $identities.broker.processId -ErrorAction SilentlyContinue) -or
-             (Get-Process -Id $identities.playwright.processId -ErrorAction SilentlyContinue))) {
+             (Get-Process -Id $identities.playwright.processId -ErrorAction SilentlyContinue) -or
+             ($identities.chrome -and (Get-Process -Id $identities.chrome.processId -ErrorAction SilentlyContinue)))) {
             Start-Sleep -Milliseconds 200
         }
         if (Get-Process -Id $identities.broker.processId -ErrorAction SilentlyContinue) {
@@ -758,6 +904,10 @@ try {
             $null = Stop-RecordedProcessIfOwned $metadata 'playwright' ${function:Test-PlaywrightListenerIdentity}
             throw 'Playwright MCP did not stop after its identity was revalidated.'
         }
+        if ($identities.chrome -and (Get-Process -Id $identities.chrome.processId -ErrorAction SilentlyContinue)) {
+            $null = Stop-RecordedProcessIfOwned $metadata 'chrome' ${function:Test-DedicatedChromeIdentity}
+            throw 'Dedicated Chrome did not stop after its identity was revalidated.'
+        }
         if (-not (Remove-MetadataIfOwned ([string]$metadata.startAttemptId))) {
             throw 'Bridge stopped, but its management record changed ownership and was preserved.'
         }
@@ -767,7 +917,8 @@ try {
             ok = $true
             command = $Command
             running = $false
-            stoppedProcessIds = @($identities.broker.processId, $identities.playwright.processId)
+            stoppedProcessIds = @($identities.broker.processId, $identities.playwright.processId,
+                $(if ($identities.chrome) { $identities.chrome.processId })) | Where-Object { $_ }
             endpoint = $metadata.endpoint
         }
         exit 0
@@ -790,12 +941,16 @@ try {
             catch { $cleanupFailures.Add("broker: $($_.Exception.Message)") }
             try { $null = Stop-RecordedProcessIfOwned $ownedMetadata 'playwright' ${function:Test-PlaywrightListenerIdentity} $false }
             catch { $cleanupFailures.Add("playwright: $($_.Exception.Message)") }
+            try { $null = Stop-RecordedProcessIfOwned $ownedMetadata 'chrome' ${function:Test-DedicatedChromeIdentity} $false }
+            catch { $cleanupFailures.Add("chrome: $($_.Exception.Message)") }
             $cleanupDeadline = [DateTime]::UtcNow.AddSeconds([Math]::Min($TimeoutSeconds, 5))
             while ([DateTime]::UtcNow -lt $cleanupDeadline -and
-                ((Test-RecordedProcessAlive $ownedMetadata 'broker') -or (Test-RecordedProcessAlive $ownedMetadata 'playwright'))) {
+                ((Test-RecordedProcessAlive $ownedMetadata 'broker') -or
+                 (Test-RecordedProcessAlive $ownedMetadata 'playwright') -or
+                 (Test-RecordedProcessAlive $ownedMetadata 'chrome'))) {
                 Start-Sleep -Milliseconds 200
             }
-            foreach ($prefix in @('broker', 'playwright')) {
+            foreach ($prefix in @('broker', 'playwright', 'chrome')) {
                 if (Test-RecordedProcessAlive $ownedMetadata $prefix) { $survivors.Add($prefix) }
             }
             if ($survivors.Count -eq 0 -and $cleanupFailures.Count -eq 0) {
@@ -809,13 +964,13 @@ try {
                 $ownedMetadata | Add-Member -NotePropertyName survivingComponents -NotePropertyValue @($survivors) -Force
                 Write-Metadata $ownedMetadata
             }
-        } elseif ($startedBrokerIdentity -or $startedPlaywrightIdentity) {
+        } elseif ($startedBrokerIdentity -or $startedPlaywrightIdentity -or $startedChromeIdentity) {
             # A metadata write itself may have failed after a process identity
             # was captured. Reconstruct the exact minimum recovery record from
             # memory, attempt bounded cleanup, and persist any survivor rather
             # than abandoning an unowned component.
             $recoveryMetadata = [ordered]@{
-                schemaVersion = 3
+                schemaVersion = 4
                 state = 'RECOVERY_REQUIRED'
                 startAttemptId = $startAttemptId
                 endpoint = $endpoint
@@ -835,17 +990,28 @@ try {
                 $recoveryMetadata.brokerCreationDate = $startedBrokerIdentity.creationDate
                 $recoveryMetadata.brokerCreationUtcTicks = $startedBrokerIdentity.creationUtcTicks
             }
+            if ($startedChromeIdentity) {
+                $recoveryMetadata.chromeProcessId = $startedChromeIdentity.processId
+                $recoveryMetadata.chromePort = $chromePort
+                $recoveryMetadata.chromeCreationDate = $startedChromeIdentity.creationDate
+                $recoveryMetadata.chromeCreationUtcTicks = $startedChromeIdentity.creationUtcTicks
+                $recoveryMetadata.chromeExecutablePath = $startedChromeIdentity.executablePath
+            }
             $ownedMetadata = [pscustomobject]$recoveryMetadata
             try { $null = Stop-RecordedProcessIfOwned $ownedMetadata 'broker' ${function:Test-BrokerListenerIdentity} $false }
             catch { $cleanupFailures.Add("broker: $($_.Exception.Message)") }
             try { $null = Stop-RecordedProcessIfOwned $ownedMetadata 'playwright' ${function:Test-PlaywrightListenerIdentity} $false }
             catch { $cleanupFailures.Add("playwright: $($_.Exception.Message)") }
+            try { $null = Stop-RecordedProcessIfOwned $ownedMetadata 'chrome' ${function:Test-DedicatedChromeIdentity} $false }
+            catch { $cleanupFailures.Add("chrome: $($_.Exception.Message)") }
             $cleanupDeadline = [DateTime]::UtcNow.AddSeconds([Math]::Min($TimeoutSeconds, 5))
             while ([DateTime]::UtcNow -lt $cleanupDeadline -and
-                ((Test-RecordedProcessAlive $ownedMetadata 'broker') -or (Test-RecordedProcessAlive $ownedMetadata 'playwright'))) {
+                ((Test-RecordedProcessAlive $ownedMetadata 'broker') -or
+                 (Test-RecordedProcessAlive $ownedMetadata 'playwright') -or
+                 (Test-RecordedProcessAlive $ownedMetadata 'chrome'))) {
                 Start-Sleep -Milliseconds 200
             }
-            foreach ($prefix in @('broker', 'playwright')) {
+            foreach ($prefix in @('broker', 'playwright', 'chrome')) {
                 if (Test-RecordedProcessAlive $ownedMetadata $prefix) { $survivors.Add($prefix) }
             }
             if ($survivors.Count -gt 0 -or $cleanupFailures.Count -gt 0) {

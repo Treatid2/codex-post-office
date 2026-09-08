@@ -73,6 +73,9 @@ try {
     if ($start.bridge.PSObject.Properties.Name -contains 'brokerShutdownToken') {
         throw 'Start exposed the private shutdown credential.'
     }
+    if ($BrowserMode -eq 'DedicatedChrome' -and -not $start.bridge.chromeProcessId) {
+        throw 'Dedicated start did not publish its managed Chrome identity.'
+    }
 
     $duplicateOutput = & $bridge start -Port $port -BrowserMode $BrowserMode -Headless `
         -StateRoot $temporaryRoot -TimeoutSeconds 10 2>&1
@@ -92,8 +95,13 @@ try {
     }
     if ($status.bridge.PSObject.Properties.Name -contains 'brokerShutdownToken' -or
         $status.processes.broker.PSObject.Properties.Name -contains 'commandLine' -or
-        $status.processes.playwright.PSObject.Properties.Name -contains 'commandLine') {
+        $status.processes.playwright.PSObject.Properties.Name -contains 'commandLine' -or
+        ($status.processes.chrome -and
+         $status.processes.chrome.PSObject.Properties.Name -contains 'commandLine')) {
         throw 'Status exposed private process or shutdown details.'
+    }
+    if ($BrowserMode -eq 'DedicatedChrome' -and -not $status.processes.chrome.processId) {
+        throw 'Status did not verify the managed Chrome process.'
     }
 
     # Stop must participate in the same lifecycle lock as start. Holding that
@@ -144,6 +152,7 @@ try {
     }
     Set-Content -LiteralPath $metadataPath -Value $metadataText -Encoding utf8NoBOM -NoNewline
 
+    $dedicatedChromeProcessId = $start.bridge.chromeProcessId
     $stop = Invoke-Bridge -BridgeArguments @{
         Command = 'stop'
         Port = $port
@@ -151,6 +160,10 @@ try {
     }
     $started = $false
     if ($stop.running) { throw 'Stop did not report a stopped bridge.' }
+    if ($dedicatedChromeProcessId -and
+        (Get-Process -Id ([int]$dedicatedChromeProcessId) -ErrorAction SilentlyContinue)) {
+        throw 'Stop left the managed dedicated Chrome process alive.'
+    }
     if ($BrowserMode -eq 'DedicatedChrome' -and
         -not (Get-ChildItem -LiteralPath (Join-Path $temporaryRoot 'chrome-profile') -Force |
             Select-Object -First 1)) {
