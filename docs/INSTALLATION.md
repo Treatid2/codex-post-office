@@ -139,6 +139,20 @@ dispatch marker in the bound ChatGPT conversation:
 Do not hand-author this manifest. The backend must bind its message, mailbox generation,
 conversation UUID, payload order, byte sizes and SHA-256 values before invoking the bridge.
 
+Collection is the reverse transaction. After an authoritative browser-task read supplies an exact
+attachment identity, the backend issues a generation- and sweep-bound collection manifest. The
+bridge downloads only matching bytes and returns a correlated receipt; the backend rehashes and
+retains the bytes before success is reported:
+
+~~~powershell
+./plugins/playwright-browser-bridge/scripts/Invoke-PlaywrightBrowserBridge.ps1 collect-attachment `
+  -ManifestPath <absolute-collection-manifest-path>
+~~~
+
+Do not hand-author collection manifests or clear the bridge output before the Post Office custody
+receipt exists. Collection retries before retention may download another transient copy; durable
+deduplication is by browser mailbox and SHA-256.
+
 ## Data and credentials
 
 - Runtime databases, payloads, evidence and browser profiles live outside the repository.

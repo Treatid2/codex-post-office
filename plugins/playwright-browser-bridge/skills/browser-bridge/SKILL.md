@@ -51,7 +51,10 @@ through the Post Office receipt operation before treating the message as deliver
 same manifest is the supported recovery path: the exact visible dispatch marker suppresses a
 duplicate send.
 
-Use `collect-attachment` only after an authoritative task read has supplied the exact ChatGPT
-conversation UUID, attachment filename, byte count, SHA-256, and any required review correlation
-markers. The command navigates only to that ChatGPT conversation and returns only newly downloaded,
-hash-matching bytes. It does not interpret the attachment or grant mail/review authority.
+Use `collect-attachment` only with the immutable `collection-manifest.json` issued after an
+authoritative task read. The manifest binds the exact ChatGPT conversation UUID, browser mailbox
+generation, sweep, source turn, attachment reference, filename, byte count, SHA-256, and required
+correlation markers. The command navigates only to that conversation and returns only newly
+downloaded, hash-matching bytes plus its collection receipt. The Post Office caller must rehash and
+retain those bytes before clearing the transient file. The bridge does not interpret the attachment
+or grant mail/review authority.

@@ -20,12 +20,7 @@ param(
 
     [string] $StateRoot = (Join-Path $env:LOCALAPPDATA 'Codex\PostOfficeNext\playwright-browser-bridge'),
 
-    [string] $ThreadId,
-    [string] $ManifestPath,
-    [string] $AttachmentName,
-    [string] $ExpectedSha256,
-    [long] $ExpectedBytes = 0,
-    [string[]] $RequiredText = @()
+    [string] $ManifestPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -382,8 +377,9 @@ function Invoke-ChatGptBootstrap([switch] $RetainAuthenticationTab) {
 }
 
 function Invoke-ChatGptAttachmentCollection {
-    if (-not $ThreadId -or -not $AttachmentName -or -not $ExpectedSha256 -or $ExpectedBytes -lt 1) {
-        throw 'collect-attachment requires ThreadId, AttachmentName, ExpectedSha256, and ExpectedBytes.'
+    if (-not $ManifestPath) { throw 'collect-attachment requires ManifestPath.' }
+    if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
+        throw "Collection manifest does not exist: $ManifestPath"
     }
     $runtime = Get-NodeRuntime
     $outputRoot = Join-Path $StateRoot 'output'
@@ -391,12 +387,8 @@ function Invoke-ChatGptAttachmentCollection {
         $collectorScript,
         '--endpoint', $endpoint,
         '--timeout-ms', ([string]($TimeoutSeconds * 1000)),
-        '--thread-id', $ThreadId,
-        '--attachment-name', $AttachmentName,
-        '--expected-sha256', $ExpectedSha256,
-        '--expected-bytes', ([string]$ExpectedBytes),
         '--output-root', $outputRoot,
-        '--required-text-json', (ConvertTo-Json -InputObject @($RequiredText) -Compress)
+        '--manifest', ([IO.Path]::GetFullPath($ManifestPath))
     )
     $output = & $runtime.node @collectorArguments 2>&1
     if ($LASTEXITCODE -ne 0) {

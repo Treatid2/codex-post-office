@@ -69,5 +69,11 @@ review from that requester is open.
 Normal delivery and monitoring use the local MCP browser path. Google Drive is an exceptional
 compatibility bridge only and is never retained storage.
 
+Review return collection is manifest-bound in the coordinator backend. The backend fixes the
+review, reviewer thread, browser generation, assistant source message, filename, byte count, and
+SHA-256 before the separate Playwright bridge is allowed to download anything. The bridge returns
+a correlated receipt; Post Office rehashes and retains the exact bytes before the transient browser
+copy is removed. Requester tasks do not receive browser or collection authority.
+
 See [the architecture decision](docs/architecture-decision.md) for the boundary and alternatives.
 This plugin is distributed under the Mozilla Public License 2.0; see the repository `LICENSE`.

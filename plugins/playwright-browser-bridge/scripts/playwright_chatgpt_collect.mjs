@@ -28,30 +28,72 @@ function required(name) {
 
 const endpoint = String(values.get("--endpoint") ?? "http://127.0.0.1:8931/mcp");
 const timeoutMs = Number(values.get("--timeout-ms") ?? 120_000);
-const threadId = required("--thread-id");
-const attachmentName = required("--attachment-name");
-const expectedSha256 = required("--expected-sha256").toLowerCase();
-const expectedBytes = Number(required("--expected-bytes"));
+const manifestPath = path.resolve(required("--manifest"));
 const outputRoot = path.resolve(required("--output-root"));
-const requiredTexts = JSON.parse(String(values.get("--required-text-json") ?? "[]"));
-
-if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(threadId)) {
-  throw new Error("--thread-id must be a UUID");
-}
-if (path.basename(attachmentName) !== attachmentName || attachmentName.length > 240) {
-  throw new Error("--attachment-name must be one leaf filename");
-}
-if (!/^[0-9a-f]{64}$/.test(expectedSha256)) throw new Error("--expected-sha256 must be 64 hexadecimal characters");
-if (!Number.isSafeInteger(expectedBytes) || expectedBytes < 1 || expectedBytes > 268_435_456) {
-  throw new Error("--expected-bytes is outside the 1..268435456 boundary");
-}
-if (!Array.isArray(requiredTexts) || requiredTexts.some((item) => typeof item !== "string" || !item || item.length > 512)) {
-  throw new Error("--required-text-json must be an array of non-empty strings no longer than 512 characters");
-}
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const idPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
+let manifest;
+let collectionId;
+let threadId;
+let attachmentName;
+let expectedSha256;
+let expectedBytes;
+let requiredTexts;
+let threadUrl;
 
 let sessionId;
 let nextId = 1;
-const threadUrl = `https://chatgpt.com/c/${threadId}`;
+
+async function validateManifest() {
+  const stat = await fs.stat(manifestPath);
+  if (!stat.isFile() || stat.size < 2 || stat.size > 1_048_576) {
+    throw new Error("Collection manifest must be a regular JSON file no larger than 1 MiB");
+  }
+  manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+  if (manifest?.schemaVersion !== 1) throw new Error("Unsupported collection manifest schemaVersion");
+  if (!idPattern.test(manifest.collectionId ?? "")) throw new Error("Invalid collectionId");
+  if (!uuidPattern.test(manifest.threadId ?? "")) throw new Error("Invalid threadId");
+  if (!idPattern.test(manifest.mailboxId ?? "")) throw new Error("Invalid mailboxId");
+  if (!Number.isSafeInteger(manifest.mailboxGeneration) || manifest.mailboxGeneration < 1) {
+    throw new Error("Invalid mailboxGeneration");
+  }
+  if (!["BROWSER_SWEEP", "AUTOMATIC_REVIEW"].includes(manifest.scopeKind)) {
+    throw new Error("Invalid scopeKind");
+  }
+  if (!idPattern.test(manifest.scopeId ?? "")) throw new Error("Invalid scopeId");
+  if (typeof manifest.sourceTurnId !== "string" || !manifest.sourceTurnId || manifest.sourceTurnId.length > 512) {
+    throw new Error("Invalid sourceTurnId");
+  }
+  if (typeof manifest.attachmentReference !== "string" || !manifest.attachmentReference ||
+      manifest.attachmentReference.length > 2048) {
+    throw new Error("Invalid attachmentReference");
+  }
+  if (typeof manifest.attachmentName !== "string" || path.basename(manifest.attachmentName) !== manifest.attachmentName ||
+      !manifest.attachmentName || manifest.attachmentName.length > 240) {
+    throw new Error("attachmentName must be one leaf filename");
+  }
+  if (!Number.isSafeInteger(manifest.expectedBytes) || manifest.expectedBytes < 1 ||
+      manifest.expectedBytes > 268_435_456) {
+    throw new Error("expectedBytes is outside the 1..268435456 boundary");
+  }
+  if (!/^[0-9a-f]{64}$/.test(manifest.expectedSha256 ?? "")) {
+    throw new Error("expectedSha256 must be 64 lowercase hexadecimal characters");
+  }
+  if (typeof manifest.observedAt !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(manifest.observedAt)) {
+    throw new Error("Invalid observedAt");
+  }
+  if (!Array.isArray(manifest.requiredText) || manifest.requiredText.length > 16 ||
+      manifest.requiredText.some((item) => typeof item !== "string" || !item || item.length > 512)) {
+    throw new Error("requiredText must contain at most 16 non-empty strings no longer than 512 characters");
+  }
+  collectionId = manifest.collectionId;
+  threadId = manifest.threadId;
+  attachmentName = manifest.attachmentName;
+  expectedSha256 = manifest.expectedSha256;
+  expectedBytes = manifest.expectedBytes;
+  requiredTexts = manifest.requiredText;
+  threadUrl = `https://chatgpt.com/c/${threadId}`;
+}
 
 function decodePayload(responseText, contentType) {
   if (!responseText.trim()) return null;
@@ -156,6 +198,18 @@ async function findVerifiedDownload(baseline, clickStartedAt) {
   return matches[0] ?? null;
 }
 
+async function normalizeVerifiedDownload(verified) {
+  const attemptRoot = path.join(outputRoot, "collections", collectionId, crypto.randomUUID());
+  await fs.mkdir(attemptRoot, { recursive: true });
+  const retainedName = path.join(attemptRoot, attachmentName);
+  await fs.rename(verified.filePath, retainedName);
+  const identity = await hashFile(retainedName);
+  if (identity.bytes !== expectedBytes || identity.sha256 !== expectedSha256) {
+    throw new Error("Normalized attachment identity differs from the verified download");
+  }
+  return { filePath: retainedName, ...identity };
+}
+
 async function closeSession() {
   if (!sessionId) return;
   try {
@@ -170,6 +224,7 @@ async function closeSession() {
 }
 
 try {
+  await validateManifest();
   await fs.mkdir(outputRoot, { recursive: true });
   const initialize = await request({
     jsonrpc: "2.0",
@@ -296,10 +351,12 @@ try {
   if (!verified) {
     throw new Error(`Downloaded attachment did not reach the expected byte and SHA-256 identity: ${lastActionError}`);
   }
+  verified = await normalizeVerifiedDownload(verified);
 
   console.log(JSON.stringify({
     ok: true,
     endpoint,
+    collectionId,
     threadId,
     attachmentName,
     path: verified.filePath,
@@ -307,6 +364,7 @@ try {
     sha256: verified.sha256,
     evidenceMarkers: requiredTexts.length,
     matchingControls: attachmentCandidates.length,
+    receiptReference: `playwright-chatgpt-collection:${collectionId}:${threadId}:${verified.sha256}`,
   }));
 } catch (error) {
   const message = error?.name === "AbortError"
@@ -315,8 +373,10 @@ try {
   console.error(JSON.stringify({
     ok: false,
     endpoint,
-    threadId,
-    attachmentName,
+    manifestPath,
+    collectionId: collectionId ?? null,
+    threadId: threadId ?? null,
+    attachmentName: attachmentName ?? null,
     error: message,
   }));
   process.exitCode = 1;

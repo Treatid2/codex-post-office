@@ -199,31 +199,49 @@ try {
   ]);
 
   await fs.writeFile(path.join(outputRoot, "stale.md"), payload);
+  const collectionManifestPath = path.join(testRoot, "collection.json");
+  const collectionManifest = {
+    schemaVersion: 1,
+    collectionId: "PWB-COLLECTION-TEST-0001",
+    threadId,
+    mailboxId: "TEST-MBX-0001",
+    mailboxGeneration: 1,
+    scopeKind: "BROWSER_SWEEP",
+    scopeId: "BROWSER-SWEEP-TEST-0001",
+    sourceTurnId: "TURN-TEST-0001",
+    attachmentReference: "chatgpt-attachment:TEST-0001",
+    attachmentName,
+    expectedBytes: payload.length,
+    expectedSha256,
+    observedAt: "2026-09-08T12:00:00.000000Z",
+    requiredText: ["REVIEW-CORRELATION"],
+  };
+  await fs.writeFile(collectionManifestPath, JSON.stringify(collectionManifest));
   result = await run(collectorScript, [
     "--timeout-ms", "5000",
-    "--thread-id", threadId,
-    "--attachment-name", attachmentName,
-    "--expected-sha256", expectedSha256,
-    "--expected-bytes", String(payload.length),
     "--output-root", outputRoot,
-    "--required-text-json", JSON.stringify(["REVIEW-CORRELATION"]),
+    "--manifest", collectionManifestPath,
   ]);
   assert.equal(result.code, 0, result.stderr);
   const collected = JSON.parse(result.stdout);
   assert.equal(collected.sha256, expectedSha256);
   assert.equal(collected.bytes, payload.length);
-  assert.equal(path.basename(collected.path), "download-1.md");
+  assert.equal(path.basename(collected.path), attachmentName);
+  assert.match(collected.path, /[\\/]collections[\\/]PWB-COLLECTION-TEST-0001[\\/]/);
   assert.equal(collected.matchingControls, 2);
+  assert.equal(collected.collectionId, collectionManifest.collectionId);
+  assert.equal(
+    collected.receiptReference,
+    `playwright-chatgpt-collection:${collectionManifest.collectionId}:${threadId}:${expectedSha256}`,
+  );
   assert.equal(lastNavigation, "https://chatgpt.com/c/" + threadId);
 
+  collectionManifest.requiredText = ["MISSING-CORRELATION"];
+  await fs.writeFile(collectionManifestPath, JSON.stringify(collectionManifest));
   result = await run(collectorScript, [
     "--timeout-ms", "1000",
-    "--thread-id", threadId,
-    "--attachment-name", attachmentName,
-    "--expected-sha256", expectedSha256,
-    "--expected-bytes", String(payload.length),
     "--output-root", outputRoot,
-    "--required-text-json", JSON.stringify(["MISSING-CORRELATION"]),
+    "--manifest", collectionManifestPath,
   ]);
   assert.notEqual(result.code, 0);
   assert.match(result.stderr, /Required correlation text was not found/);
@@ -277,6 +295,8 @@ try {
     correlationRequired: true,
     staleFileRejected: true,
     exactHashVerified: true,
+    collectionManifestBounded: true,
+    collectionReceiptCorrelated: true,
     deliveryManifestBounded: true,
     deliveryMarkerIdempotent: true,
     deliveryAttachmentHashVerified: true,

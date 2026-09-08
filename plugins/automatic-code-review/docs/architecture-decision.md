@@ -45,3 +45,10 @@ Browser execution is supplied by the separate singleton `playwright-browser-brid
 normal mode owns a dedicated persistent Chrome profile; the review broker keeps one long-lived
 MCP session to its loopback endpoint. Review callers never receive raw Playwright tools or CDP
 authority through the review-specific client contract.
+
+Return collection uses an immutable manifest issued by the Post Office review coordinator. It
+binds the active review and activation to the reviewer thread, browser mailbox generation, exact
+assistant message, attachment name, size, and SHA-256. The browser bridge accepts that manifest
+rather than caller-selected collection fields. A collection becomes successful only after the
+backend rehashes and retains the exact result under local content-addressed custody; replay returns
+the existing receipt without clicking the browser again.

@@ -76,22 +76,23 @@ while authentication is required. In headless mode it performs an authentication
 its MCP session; if login is required or the site presents an interstitial, operate headed.
 
 When the direct task API identifies a completed ChatGPT attachment but cannot expose its local
-path, the trusted courier can collect that one exact file through the dedicated profile:
+path, the compatible Post Office backend issues an immutable collection manifest. The trusted
+courier can then collect that one exact file through the dedicated profile:
 
 ```powershell
 ./scripts/Invoke-PlaywrightBrowserBridge.ps1 collect-attachment `
-  -ThreadId '<conversation-uuid>' `
-  -AttachmentName '<exact-name>' `
-  -ExpectedBytes <exact-byte-count> `
-  -ExpectedSha256 '<exact-sha256>' `
-  -RequiredText @('<review-id>', '<activation-dispatch-id>')
+  -ManifestPath '<post-office-state>/playwright-collections/<collection-id>/collection-manifest.json'
 ```
 
-The collector is restricted to `https://chatgpt.com/c/<uuid>`, performs a bounded conversation
-scan for exact-named actionable attachment controls, rejects stale output files, and returns only
-a newly downloaded file whose size and SHA-256 match. Repeated exact controls are safe because the
-declared content identity remains authoritative. The caller must then import that file into Post
-Office custody before clearing the transient bridge output.
+The manifest binds the collection ID, sweep, browser mailbox generation, ChatGPT conversation,
+source turn, attachment reference, filename, byte count, SHA-256 and required correlation markers.
+The collector is restricted to `https://chatgpt.com/c/<uuid>`, performs a bounded conversation scan
+for exact-named actionable attachment controls, rejects stale output files, and returns only a
+newly downloaded hash-matching file plus the exact
+`playwright-chatgpt-collection:<collection-id>:<thread-id>:<sha256>` receipt. A compatible Post
+Office backend must rehash and retain those bytes atomically before the transient bridge copy is
+cleared. Replaying a retained collection returns its existing custody receipt; an interrupted
+pre-retention attempt may redownload the same content, which deduplicates by mailbox and SHA-256.
 
 For Codex-to-browser delivery, Post Office first issues an immutable JSON dispatch manifest. The
 bridge accepts only that manifest path on the command line; prompt text and attachment paths are

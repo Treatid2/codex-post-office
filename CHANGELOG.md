@@ -14,6 +14,8 @@ All notable changes to this repository will be documented here.
 - Added SHA-256 and size validation for every uploaded attachment.
 - Added visible dispatch-marker replay suppression and a stable delivery receipt.
 - Expanded transport tests to cover delivery, duplicate retry and tampered attachment rejection.
+- Added manifest-bound Playwright collection with generation, sweep, source-turn and attachment
+  correlation plus an exact custody receipt.
 
 ## 0.1.0 - 2026-09-07
 

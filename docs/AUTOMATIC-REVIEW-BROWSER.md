@@ -72,8 +72,10 @@ Playwright or CDP tools.
 - A returned turn is only a scheduling signal until Review ID, activation dispatch, attachment
   identity, size and SHA-256 are verified.
 - If the direct task API cannot expose the exact attachment path, use the bridge's
-  `collect-attachment` command with the retained reviewer conversation UUID, result name, byte
-  count, SHA-256, Review ID, and Activation Dispatch ID. Import the returned bytes immediately.
+  `collect-attachment` command with the immutable backend-issued manifest binding the retained
+  reviewer conversation UUID, source turn, result name, byte count, SHA-256, Review ID, and
+  Activation Dispatch ID. Import the returned bytes immediately and record the exact collection
+  receipt before clearing the transient download.
 - Preserve results in local custody and return them only to the retained requester.
 - Review output has REPORT authority; it grants no implementation or publication authority.
 - A normal return wakes the collector through the completed-turn event. There is no polling
