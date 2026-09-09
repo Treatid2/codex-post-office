@@ -32,6 +32,7 @@ const deletedSessions = [];
 let previewOpen = false;
 let uploadMenuOpen = false;
 let chooserOpen = false;
+let attachmentControlFailures = 1;
 let uploadedPaths = [];
 let sentText = null;
 let draftText = null;
@@ -118,8 +119,16 @@ const server = http.createServer(async (request, response) => {
       sentText = draftText;
       result = textResult("### Result\nMessage sent");
     } else if (args.target === "e10") {
-      uploadMenuOpen = true;
-      result = textResult("### Result\nUpload menu opened");
+      if (attachmentControlFailures > 0) {
+        attachmentControlFailures -= 1;
+        result = {
+          isError: true,
+          content: [{ type: "text", text: "TimeoutError: element did not become stable" }],
+        };
+      } else {
+        uploadMenuOpen = true;
+        result = textResult("### Result\nUpload menu opened");
+      }
     } else if (args.target === "e11") {
       uploadMenuOpen = false;
       chooserOpen = true;
@@ -138,10 +147,19 @@ const server = http.createServer(async (request, response) => {
       result = textResult("### Result\nDownload started");
     }
   } else if (name === "browser_file_upload") {
-    assert.equal(chooserOpen, true);
-    chooserOpen = false;
-    uploadedPaths = args.paths;
-    result = textResult("### Result\nFiles uploaded");
+    if (!chooserOpen) {
+      result = {
+        isError: true,
+        content: [{
+          type: "text",
+          text: "The browser_file_upload tool can only be used when there is related modal state present",
+        }],
+      };
+    } else {
+      chooserOpen = false;
+      uploadedPaths = args.paths;
+      result = textResult("### Result\nFiles uploaded");
+    }
   } else if (name === "browser_type") {
     assert.equal(args.target, "e4");
     assert.equal(args.submit, false);
@@ -280,6 +298,7 @@ try {
   const delivered = JSON.parse(result.stdout);
   assert.equal(delivered.replayed, false);
   assert.equal(delivered.dispatchId, deliveryManifest.dispatchId);
+  assert.equal(attachmentControlFailures, 0);
   assert.deepEqual(uploadedPaths, [deliveryPayloadPath]);
   assert.match(sentText, /^POST-OFFICE-PLAYWRIGHT-DISPATCH PWB-DELIVERY-TEST-0001\n\n/);
 

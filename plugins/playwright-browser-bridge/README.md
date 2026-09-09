@@ -89,15 +89,19 @@ courier can then collect that one exact file through the dedicated profile:
 The manifest binds the collection ID, sweep, browser mailbox generation, ChatGPT conversation,
 source turn, attachment reference, filename, byte count, SHA-256 and required correlation markers.
 The collector is restricted to `https://chatgpt.com/c/<uuid>`, verifies the exact source-turn UUID
-and its correlation markers, and finds only the exact-named attachment card. A short-lived pinned
-Playwright client attaches to the bridge-owned Chrome listener, captures the exact signed
-attachment request, and retrieves it with that browser context's authenticated request client. This
-avoids navigating the tab to a download URL that Chrome extensions may block. It returns only a
-newly retrieved hash-matching file plus the exact
+and its correlation markers, and first uses an exact-named attachment control when one is rendered.
+If ChatGPT preserves a generated `sandbox:` reference but omits the in-thread control, the collector
+uses the same authenticated browser session's Library. A Library candidate must match the filename,
+byte count, conversation ID and originating assistant message; a user source message may correlate
+only through the same immutable turn-exchange ID. The Library's own Download action then supplies
+the bytes. Neither conversation metadata nor Library listings are retained. Both paths return only
+a newly retrieved hash-matching file plus the exact
 `playwright-chatgpt-collection:<collection-id>:<thread-id>:<sha256>` receipt. A compatible Post
 Office backend must rehash and retain those bytes atomically before the transient bridge copy is
 cleared. Replaying a retained collection returns its existing custody receipt; an interrupted
 pre-retention attempt may redownload the same content, which deduplicates by mailbox and SHA-256.
+Collection failures return stable error codes such as `ATTACHMENT_LIBRARY_UNRESOLVED`; compatible
+Post Office wrappers record that retryable state and attempt count without weakening the manifest.
 
 For Codex-to-browser delivery, Post Office first issues an immutable JSON dispatch manifest. The
 bridge accepts only that manifest path on the command line; prompt text and attachment paths are
@@ -161,6 +165,7 @@ it is not the production ChatGPT transport.
 `npm test` exercises broker admission, queue, session-retirement, and response-size boundaries. It
 also verifies authentication detection, bounded retained login sessions, exact-thread navigation,
 mandatory correlation markers, stale-download rejection, exact attachment hashing, manifest-bound
-uploads, and delivery-marker replay suppression. The
+uploads, Library origin correlation, exact Library candidate selection, and delivery-marker replay
+suppression. The
 PowerShell integration test proves managed-browser operation, protected-root refusal, lifecycle
 serialization, interrupted start recovery, and changed-process-identity refusal.

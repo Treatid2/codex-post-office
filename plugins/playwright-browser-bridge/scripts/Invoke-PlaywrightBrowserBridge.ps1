@@ -33,6 +33,7 @@ $bootstrapScript = Join-Path $PSScriptRoot 'playwright_chatgpt_bootstrap.mjs'
 $collectorScript = Join-Path $PSScriptRoot 'playwright_chatgpt_collect.mjs'
 $directCollectorScript = Join-Path $PSScriptRoot 'playwright_chatgpt_collect_direct.mjs'
 $deliveryScript = Join-Path $PSScriptRoot 'playwright_chatgpt_deliver.mjs'
+$directDeliveryScript = Join-Path $PSScriptRoot 'playwright_chatgpt_deliver_direct.mjs'
 $brokerScript = Join-Path $PSScriptRoot 'playwright_mcp_broker.mjs'
 $profileRoot = Join-Path $StateRoot 'chrome-profile'
 $playwrightCoreVersion = '1.63.0-alpha-2026-08-31'
@@ -474,6 +475,14 @@ function Invoke-ChatGptAttachmentCollection {
     )
     $output = & $runtime.node @collectorArguments 2>&1
     if ($LASTEXITCODE -ne 0) {
+        $failure = $null
+        try { $failure = ($output[-1] | ConvertFrom-Json) } catch { }
+        if ($failure -and [string]$failure.errorCode) {
+            $exception = [InvalidOperationException]::new([string]$failure.error)
+            $exception.Data['collectionErrorCode'] = [string]$failure.errorCode
+            $exception.Data['collectionErrorDetails'] = $failure.details
+            throw $exception
+        }
         throw "ChatGPT attachment collection failed: $($output -join [Environment]::NewLine)"
     }
     return ($output -join [Environment]::NewLine | ConvertFrom-Json)
@@ -484,12 +493,54 @@ function Invoke-ChatGptDelivery {
     if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
         throw "Delivery manifest does not exist: $ManifestPath"
     }
+    $sourceManifestPath = [IO.Path]::GetFullPath($ManifestPath)
+    $deliveryManifest = Get-Content -LiteralPath $sourceManifestPath -Raw | ConvertFrom-Json
+    if ([string]$deliveryManifest.dispatchId -notmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$') {
+        throw 'Delivery manifest has an invalid dispatchId.'
+    }
+    $outputRoot = [IO.Path]::GetFullPath((Join-Path $StateRoot 'output'))
+    New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
+    $stagingRoot = [IO.Path]::GetFullPath((Join-Path $outputRoot (Join-Path 'delivery-dispatches' ([string]$deliveryManifest.dispatchId))))
+    if (-not $stagingRoot.StartsWith($outputRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Resolved delivery staging root escaped the bridge output directory.'
+    }
+    New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
+    foreach ($attachment in @($deliveryManifest.attachments)) {
+        $sourcePath = [IO.Path]::GetFullPath([string]$attachment.path)
+        $sourceName = [string]$attachment.sourceName
+        if ([IO.Path]::GetFileName($sourceName) -ne $sourceName) {
+            throw 'Delivery attachment sourceName must be a leaf filename.'
+        }
+        $sourceItem = Get-Item -LiteralPath $sourcePath -ErrorAction Stop
+        $sourceHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($sourceItem.Length -ne [long]$attachment.sizeBytes -or $sourceHash -ne [string]$attachment.sha256) {
+            throw "Delivery attachment identity mismatch before staging: $sourceName"
+        }
+        $stagedPath = Join-Path $stagingRoot $sourceName
+        Copy-Item -LiteralPath $sourcePath -Destination $stagedPath -Force
+        $stagedItem = Get-Item -LiteralPath $stagedPath -ErrorAction Stop
+        $stagedHash = (Get-FileHash -LiteralPath $stagedPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($stagedItem.Length -ne [long]$attachment.sizeBytes -or $stagedHash -ne [string]$attachment.sha256) {
+            throw "Delivery attachment identity mismatch after staging: $sourceName"
+        }
+        $attachment.path = $stagedPath
+    }
+    $stagedManifestPath = Join-Path $stagingRoot 'delivery-manifest.json'
+    [IO.File]::WriteAllText(
+        $stagedManifestPath,
+        ($deliveryManifest | ConvertTo-Json -Depth 20 -Compress),
+        [Text.UTF8Encoding]::new($false)
+    )
     $runtime = Get-NodeRuntime
+    $playwrightRuntimeRoot = Get-PlaywrightCoreRuntime $runtime
+    $dedicatedCdp = Get-DedicatedChromeCdpEndpoint
+    if (-not $dedicatedCdp) { throw 'The managed dedicated Chrome CDP endpoint is unavailable.' }
     $deliveryArguments = @(
-        $deliveryScript,
-        '--endpoint', $endpoint,
+        $directDeliveryScript,
+        '--cdp-endpoint', ([string]$dedicatedCdp.endpoint),
+        '--playwright-root', $playwrightRuntimeRoot,
         '--timeout-ms', ([string]($TimeoutSeconds * 1000)),
-        '--manifest', ([IO.Path]::GetFullPath($ManifestPath))
+        '--manifest', $stagedManifestPath
     )
     $output = & $runtime.node @deliveryArguments 2>&1
     if ($LASTEXITCODE -ne 0) {
@@ -1034,6 +1085,10 @@ try {
         ok = $false
         command = $Command
         error = $caughtException.Message
+        errorCode = if ($caughtException.Data['collectionErrorCode']) {
+            [string]$caughtException.Data['collectionErrorCode']
+        } else { 'PLAYWRIGHT_BRIDGE_COMMAND_FAILED' }
+        errorDetails = $caughtException.Data['collectionErrorDetails']
         endpoint = $endpoint
         cleanupFailures = $reportedCleanupFailures
         survivingComponents = $reportedSurvivors

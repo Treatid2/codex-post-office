@@ -4,6 +4,10 @@ All notable changes to this repository will be documented here.
 
 ## Unreleased
 
+- Implemented P2.2 native browser-result collection through authenticated ChatGPT Library when the
+  in-thread renderer omits a generated-file download control.
+- Added exact Library origin correlation, byte/hash verification, bounded retryable failure codes,
+  and focused regression tests without retaining browser/session metadata.
 - Implemented the Post Office Next P2.1 deterministic legacy importer.
 - Added exact typed retention for every legacy table and row plus conservative normalized
   projections.

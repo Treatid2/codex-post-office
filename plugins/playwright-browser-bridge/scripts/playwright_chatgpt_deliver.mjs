@@ -104,6 +104,45 @@ function enabledReference(text, role, names) {
   return [...new Set(candidates)];
 }
 
+function nearestClickableReferenceBefore(text, needle) {
+  const lines = text.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!/^\s*-\s+/i.test(line) || !line.toLowerCase().includes(needle.toLowerCase())) continue;
+    for (let ancestor = index; ancestor >= 0; ancestor -= 1) {
+      const clickable = lines[ancestor].match(
+        /^\s*-\s+[a-z]+(?:\s+"[^"]+")?[^\n]*\[ref=([^\]\s]+)\][^\n]*\[cursor=pointer\]/i,
+      );
+      if (clickable) return clickable[1];
+    }
+  }
+  return undefined;
+}
+
+const attachmentControlNames = [
+  "Add files and more",
+  "Attach files",
+  "Upload files",
+  "Add photos & files",
+];
+const composerNames = ["Message ChatGPT", "Message", "Chat with ChatGPT", "Ask ChatGPT"];
+
+async function waitForChatReady() {
+  const deadline = Date.now() + Math.min(timeoutMs, 30_000);
+  let snapshot = "";
+  while (Date.now() < deadline) {
+    snapshot = resultText(await callTool("browser_snapshot", { depth: 12 }));
+    if (/\bLog in\b|\bSign up\b/i.test(snapshot)) {
+      throw new Error("Dedicated ChatGPT profile is not authenticated");
+    }
+    const addRefs = exactReference(snapshot, "button", attachmentControlNames);
+    const composerRefs = exactReference(snapshot, "textbox", composerNames);
+    if (addRefs.length === 1 && composerRefs.length === 1) return snapshot;
+    await callTool("browser_wait_for", { time: 0.5 });
+  }
+  throw new Error("ChatGPT conversation did not expose one attachment control and one message composer within 30 seconds");
+}
+
 async function sha256File(filePath) {
   const handle = await fs.open(filePath, "r");
   try {
@@ -171,14 +210,43 @@ async function markerExists() {
 }
 
 async function uploadAttachments(snapshot) {
-  const addNames = ["Add files and more", "Attach files", "Upload files"];
-  let addRefs = exactReference(snapshot, "button", addNames);
-  if (addRefs.length !== 1) throw new Error(`Expected one attachment control, found ${addRefs.length}`);
-  await callTool("browser_click", { target: addRefs[0], element: "ChatGPT attachment control" });
+  let addRefs = exactReference(snapshot, "button", attachmentControlNames);
+  if (addRefs.length !== 1) {
+    const visibleButtonLabels = snapshot.split(/\r?\n/)
+      .map((line) => line.match(/^\s*-\s+button\s+"([^"]+)"[^\n]*\[ref=([^\]\s]+)\]/i))
+      .filter(Boolean)
+      .map((match) => match[1])
+      .filter((label) => /\b(add|attach|upload|file|photo)\b/i.test(label))
+      .slice(0, 12);
+    throw new Error(
+      `Expected one attachment control, found ${addRefs.length}; ` +
+      `visible file-related buttons: ${JSON.stringify(visibleButtonLabels)}`,
+    );
+  }
+  const uploadNames = ["Upload from computer", "Upload files", "Add photos & files"];
+  try {
+    await callTool("browser_click", { target: addRefs[0], element: "ChatGPT attachment control" });
+  } catch (error) {
+    // ChatGPT can reflow the composer after a long conversation hydrates. A
+    // Playwright accessibility ref can therefore become unstable during the
+    // click even though the control remains visible. First check whether the
+    // timed-out click opened the menu; otherwise refresh the snapshot and make
+    // exactly one retry against the new ref.
+    await callTool("browser_wait_for", { time: 0.5 });
+    const afterFailure = resultText(await callTool("browser_snapshot", { depth: 10 }));
+    const visibleUploadActions = [
+      ...exactReference(afterFailure, "button", uploadNames),
+      ...exactReference(afterFailure, "menuitem", uploadNames),
+    ];
+    if (visibleUploadActions.length === 0) {
+      addRefs = exactReference(afterFailure, "button", attachmentControlNames);
+      if (addRefs.length !== 1) throw error;
+      await callTool("browser_click", { target: addRefs[0], element: "ChatGPT attachment control" });
+    }
+  }
   await callTool("browser_wait_for", { time: 0.25 });
 
   const menu = resultText(await callTool("browser_snapshot", { depth: 10 }));
-  const uploadNames = ["Upload from computer", "Upload files", "Add photos & files"];
   const uploadRefs = [
     ...exactReference(menu, "button", uploadNames),
     ...exactReference(menu, "menuitem", uploadNames),
@@ -187,6 +255,31 @@ async function uploadAttachments(snapshot) {
   if (uniqueUploadRefs.length > 1) throw new Error(`Expected at most one upload menu action, found ${uniqueUploadRefs.length}`);
   if (uniqueUploadRefs.length === 1) {
     await callTool("browser_click", { target: uniqueUploadRefs[0], element: "Upload files from computer" });
+  } else {
+    const fallbackUploadRefs = [];
+    for (const uploadName of uploadNames) {
+      const uploadFind = resultText(await callTool("browser_find", { text: uploadName }));
+      const clickableReference = nearestClickableReferenceBefore(uploadFind, uploadName);
+      if (clickableReference) fallbackUploadRefs.push(clickableReference);
+    }
+    const uniqueFallbackRefs = [...new Set(fallbackUploadRefs)];
+    if (uniqueFallbackRefs.length === 1) {
+      await callTool("browser_click", {
+        target: uniqueFallbackRefs[0],
+        element: "Upload files from computer",
+      });
+    } else {
+    const visibleMenuActions = menu.split(/\r?\n/)
+      .map((line) => line.match(/^\s*-\s+(?:button|menuitem)\s+"([^"]+)"[^\n]*\[ref=([^\]\s]+)\]/i))
+      .filter(Boolean)
+      .map((match) => match[1])
+      .filter((label) => /\b(add|attach|upload|file|photo|computer)\b/i.test(label))
+      .slice(0, 12);
+    throw new Error(
+      `Expected one upload menu action, found ${uniqueFallbackRefs.length}; ` +
+      `visible file-related actions: ${JSON.stringify(visibleMenuActions)}`,
+    );
+    }
   }
   await callTool("browser_file_upload", { paths: manifest.attachments.map((item) => path.resolve(item.path)) });
   for (const attachment of manifest.attachments) {
@@ -222,10 +315,24 @@ try {
   if (initialize?.error) throw new Error(JSON.stringify(initialize.error));
   await request({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
 
+  try {
+    await callTool("browser_file_upload", { paths: [] });
+  } catch (error) {
+    if (!/only be used when there is related modal state present/i.test(String(error?.message ?? error))) {
+      throw error;
+    }
+  }
   const navigation = resultText(await callTool("browser_navigate", { url: threadUrl }));
   if (/\bLog in\b|\bSign up\b/i.test(navigation)) throw new Error("Dedicated ChatGPT profile is not authenticated");
-  await callTool("browser_press_key", { key: "Escape" });
+  try {
+    await callTool("browser_press_key", { key: "Escape" });
+  } catch (error) {
+    if (!/File chooser/i.test(String(error?.message ?? error))) throw error;
+    await callTool("browser_file_upload", { paths: [] });
+    await callTool("browser_press_key", { key: "Escape" });
+  }
   await callTool("browser_wait_for", { time: 0.25 });
+  let snapshot = await waitForChatReady();
   if (await markerExists()) {
     console.log(JSON.stringify({
       ok: true, endpoint, threadId: manifest.threadId, messageId: manifest.messageId,
@@ -235,11 +342,9 @@ try {
       replayed: true,
     }));
   } else {
-    let snapshot = resultText(await callTool("browser_snapshot", { depth: 12 }));
-    if (/\bLog in\b|\bSign up\b/i.test(snapshot)) throw new Error("Dedicated ChatGPT profile is not authenticated");
     await uploadAttachments(snapshot);
     snapshot = resultText(await callTool("browser_snapshot", { depth: 12 }));
-    const composerRefs = exactReference(snapshot, "textbox", ["Message ChatGPT", "Message"]);
+    const composerRefs = exactReference(snapshot, "textbox", composerNames);
     if (composerRefs.length !== 1) throw new Error(`Expected one ChatGPT message composer, found ${composerRefs.length}`);
     const prompt = `${marker()}\n\n${manifest.prompt}`;
     await callTool("browser_type", {
@@ -253,6 +358,20 @@ try {
       if (sendRefs.length > 1) throw new Error(`Expected at most one enabled send action, found ${sendRefs.length}`);
       if (sendRefs.length === 1) {
         sendRef = sendRefs[0];
+        break;
+      }
+      const fallbackSendRefs = [];
+      for (const sendName of ["Send prompt", "Send"]) {
+        const sendFind = resultText(await callTool("browser_find", { text: sendName }));
+        const clickableReference = nearestClickableReferenceBefore(sendFind, sendName);
+        if (clickableReference) fallbackSendRefs.push(clickableReference);
+      }
+      const uniqueFallbackSendRefs = [...new Set(fallbackSendRefs)];
+      if (uniqueFallbackSendRefs.length > 1) {
+        throw new Error(`Expected at most one fallback send action, found ${uniqueFallbackSendRefs.length}`);
+      }
+      if (uniqueFallbackSendRefs.length === 1) {
+        sendRef = uniqueFallbackSendRefs[0];
         break;
       }
       await callTool("browser_wait_for", { time: 0.5 });

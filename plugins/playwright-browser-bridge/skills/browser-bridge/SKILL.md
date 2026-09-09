@@ -57,8 +57,11 @@ Use `collect-attachment` only with the immutable `collection-manifest.json` issu
 authoritative task read. The manifest binds the exact ChatGPT conversation UUID, browser mailbox
 generation, sweep, source turn, attachment reference, filename, byte count, SHA-256, and required
 correlation markers. The command attaches a bounded pinned Playwright client to the bridge-owned
-Chrome listener, verifies the exact source turn, captures the exact attachment's signed request,
-and retrieves it through the authenticated browser context. It returns only newly retrieved,
-hash-matching bytes plus its collection receipt. The Post Office caller must rehash and
+Chrome listener, verifies the exact source turn, and prefers the exact rendered attachment control.
+When ChatGPT omits that control, it may use the authenticated ChatGPT Library only after matching
+the exact filename, byte count, conversation and originating message (or the source message's exact
+turn-exchange correlation), then invoke Library's own Download action. It returns only newly
+retrieved, hash-matching bytes plus its collection receipt. The Post Office caller must rehash and
 retain those bytes before clearing the transient file. The bridge does not interpret the attachment
-or grant mail/review authority.
+or grant mail/review authority. Preserve and record any returned collection error code; do not
+collapse it to a generic pending state.

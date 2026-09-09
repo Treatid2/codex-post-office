@@ -50,9 +50,15 @@ normal unattended review path. A managed isolated mode remains available for tes
   and for manifest-bound collection when the direct task API cannot expose the file. The delivery
   marker, generation-bound collection packet, exact attachment identities, and local custody
   receipt make both directions replay-safe without a browser heartbeat.
-- Collection verifies the exact source-turn UUID and correlation markers, captures only the signed
-  request for the exact attachment name, retrieves it through Chrome's authenticated request
-  context, and requires the declared byte count and SHA-256 before returning a receipt.
+- Collection verifies the exact source-turn UUID and correlation markers. It prefers a rendered
+  in-thread attachment control, then falls back to ChatGPT Library when the conversation retains a
+  generated `sandbox:` reference but the renderer omits the control. Library fallback requires the
+  exact filename, byte count, conversation ID, and originating assistant message (directly or by
+  the source message's same immutable turn-exchange ID), invokes Library's own Download action, and
+  requires the declared SHA-256 before returning a receipt. Conversation and Library metadata stay
+  in memory and are not retained.
+- A bounded failure has a stable error code. The Post Office keeps the collection retryable while
+  recording the current code, summary, timestamp and attempt count in durable state and its journal.
 - Headed bootstrap verifies the isolated ChatGPT profile without returning page content and retains
   at most one login session. Headless bootstrap is a bounded authentication check; a site
   interstitial selects headed operation rather than automation-fingerprint evasion.
