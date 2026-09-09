@@ -72,6 +72,8 @@ review from that requester is open.
 all retained custody evidence. It never deletes transport objects. Once activation has started,
 recall cannot be guaranteed; the result must return and be completed as superseded evidence. A
 withdrawn review does not delay a fresh hash-distinct cycle.
+Withdrawing `READY_TO_ACTIVATE` atomically advances the same reviewer's oldest valid queued request
+to `READY_TO_ACTIVATE` without exposing or sending an activation prompt.
 
 Normal delivery and monitoring use the local MCP browser path. Google Drive is an exceptional
 compatibility bridge only and is never retained storage.

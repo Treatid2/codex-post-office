@@ -67,7 +67,9 @@ run `withdraw --review-id <id> --reason <reason> --idempotency-key <key>`. It su
 preserving every custody and journal record. Never delete the package or Drive object to simulate
 withdrawal. Once the review is `REVIEW_ACTIVE`, it cannot be truthfully recalled: retain the eventual
 result as superseded evidence and complete it normally. A replacement must use a new Review ID and
-hash-distinct package.
+hash-distinct package. Withdrawing `READY_TO_ACTIVATE` atomically advances that reviewer's oldest
+valid queued item only to the send-safe `READY_TO_ACTIVATE` boundary; the courier must still perform
+the one-use activation and receipt sequence.
 
 ## Coordination and return
 
