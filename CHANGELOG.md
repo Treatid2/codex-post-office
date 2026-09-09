@@ -16,6 +16,7 @@ All notable changes to this repository will be documented here.
 - Expanded transport tests to cover delivery, duplicate retry and tampered attachment rejection.
 - Added manifest-bound Playwright collection with generation, sweep, source-turn and attachment
   correlation plus an exact custody receipt.
+- Added requester-owned, idempotent pre-activation review withdrawal with immutable custody history.
 
 ## 0.1.0 - 2026-09-07
 

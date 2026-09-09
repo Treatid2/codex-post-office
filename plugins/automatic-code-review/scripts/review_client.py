@@ -25,7 +25,7 @@ from typing import Any
 SCHEMA_VERSION = "1.0"
 DEPLOYMENT_SCHEMA_VERSION = "1.0"
 DEPLOYMENT_RELATIVE_PATH = Path("Treatid2") / "CodexPostOffice" / "automatic-code-review" / "runtime-lock.json"
-REVIEW_OPERATIONS = ("review-submit", "review-status", "review-complete")
+REVIEW_OPERATIONS = ("review-submit", "review-status", "review-complete", "review-withdraw")
 ENSURE_STATES = {
     "ACTIVE_DO_NOT_RESUBMIT", "RETURNED_COMPLETE_REQUIRED", "TERMINAL",
     "ABSENT_SUBMIT_CREATED", "CONFLICT",
@@ -449,6 +449,7 @@ def validate_backend_result(
     package: Path | None = None,
     review_id: str | None = None,
     idempotency_key: str | None = None,
+    withdrawal_reason: str | None = None,
 ) -> None:
     if command == "inspect":
         _require_fields(result, ("review_id", "package_name", "package_size_bytes", "package_sha256"))
@@ -458,7 +459,7 @@ def validate_backend_result(
                 or not isinstance(result["review_id"], str) or not result["review_id"]
                 or (review_id is not None and result["review_id"] != review_id)):
             raise ClientError("REVIEW_BACKEND_PROTOCOL_ERROR", "Inspect response does not match the submitted package.")
-    elif command in {"submit", "ensure", "status", "complete"}:
+    elif command in {"submit", "ensure", "status", "complete", "withdraw"}:
         _require_fields(result, ("review_id", "requester_thread_id", "requester_host_id", "status"))
         ensure_conflict = command == "ensure" and result.get("ensure_state") == "CONFLICT"
         if (not isinstance(result["review_id"], str) or not result["review_id"]
@@ -496,6 +497,20 @@ def validate_backend_result(
                     raise ClientError("REVIEW_BACKEND_PROTOCOL_ERROR", "Ensure response changed the idempotency identity.")
         if command == "complete" and result["status"] != "COMPLETED":
             raise ClientError("REVIEW_BACKEND_PROTOCOL_ERROR", "Complete response is not terminal.")
+        if command == "withdraw":
+            _require_fields(result, (
+                "withdrawal_reason", "withdrawal_idempotency_key", "withdrawn_at",
+                "withdrawal_replayed", "withdrawal_custody_preserved",
+            ))
+            if (result["status"] != "WITHDRAWN"
+                    or result["withdrawal_idempotency_key"] != idempotency_key
+                    or result["withdrawal_reason"] != withdrawal_reason.strip()
+                    or result["withdrawal_custody_preserved"] is not True
+                    or not isinstance(result["withdrawal_replayed"], bool)):
+                raise ClientError(
+                    "REVIEW_BACKEND_PROTOCOL_ERROR",
+                    "Withdraw response is not an exact custody-preserving terminal result.",
+                )
 
 
 def envelope(command: str, identity: tuple[str, str], result: dict[str, Any]) -> dict[str, Any]:
@@ -563,6 +578,10 @@ def parser() -> argparse.ArgumentParser:
     complete = sub.add_parser("complete")
     complete.add_argument("--review-id", required=True)
     complete.add_argument("--summary", required=True)
+    withdraw = sub.add_parser("withdraw")
+    withdraw.add_argument("--review-id", required=True)
+    withdraw.add_argument("--reason", required=True)
+    withdraw.add_argument("--idempotency-key", required=True)
     return result
 
 
@@ -615,12 +634,22 @@ def main(argv: list[str] | None = None) -> int:
                 result = invoke_backend(
                     backend, ["complete", "--review-id", args.review_id, "--summary", args.summary], identity,
                 )
+            elif args.command == "withdraw":
+                expected_review_id = args.review_id
+                result = invoke_backend(
+                    backend, [
+                        "withdraw", "--review-id", args.review_id,
+                        "--reason", args.reason,
+                        "--idempotency-key", args.idempotency_key,
+                    ], identity,
+                )
             else:
                 raise ClientError("REVIEW_COMMAND_UNSUPPORTED", "Unsupported command")
             if args.command != "access":
                 validate_backend_result(
                     args.command, result, identity, package=package, review_id=expected_review_id,
                     idempotency_key=getattr(args, "idempotency_key", None),
+                    withdrawal_reason=getattr(args, "reason", None),
                 )
         if args.command == "inspect" and source_package is not None and "package" in result:
             result = {**result, "package": str(source_package)}

@@ -25,7 +25,7 @@ Codex task tools and ask it to provision or rotate a review-only capability for 
 task and host. The capability must:
 
 - use the courier's active mailbox as credential subject, so no requester postal mailbox is needed;
-- contain only `review-submit`, `review-status`, and `review-complete`;
+- contain only `review-submit`, `review-status`, `review-complete`, and `review-withdraw`;
 - be bound to the exact requester task and host;
 - be written only to the protected `caller-secrets/<task-id>.token` path; and
 - never be included in chat, packages, reports, logs, or command output.
@@ -60,6 +60,14 @@ review and cooldown before creating anything. Interpret its result as follows:
 The original `submit` command remains available as a strict creation/replay primitive. The backend
 supplies registered browser and guidance endpoints. Google Drive, where a legacy adapter still
 requires it, is a transient exceptional bridge only.
+
+When the author or requesting task explicitly withdraws obsolete work before reviewer activation,
+run `withdraw --review-id <id> --reason <reason> --idempotency-key <key>`. It succeeds only from
+`PENDING_DRIVE_DELIVERY`, `QUEUED`, or `READY_TO_ACTIVATE`; it records terminal `WITHDRAWN` while
+preserving every custody and journal record. Never delete the package or Drive object to simulate
+withdrawal. Once the review is `REVIEW_ACTIVE`, it cannot be truthfully recalled: retain the eventual
+result as superseded evidence and complete it normally. A replacement must use a new Review ID and
+hash-distinct package.
 
 ## Coordination and return
 

@@ -12,7 +12,7 @@ not the normal review transport.
 Every Codex task may request review access without obtaining a postal mailbox or asking the author
 for a separate permission step. On first use, the companion asks the trusted courier to issue a
 least-authority bearer capability recorded against the task/host routing identity with only
-`review-submit`, `review-status`, and `review-complete`. The capability is stored in the normal
+`review-submit`, `review-status`, `review-complete`, and `review-withdraw`. The capability is stored in the normal
 protected caller-secret location and is never printed or copied into a package.
 
 The public client does not bundle a production Post Office backend. A trusted administrator runs
@@ -44,6 +44,7 @@ fingerprint, and transaction metadata therefore cannot come from different pathn
 ./scripts/Invoke-AutomaticCodeReview.ps1 submit --package <review.zip> --subject <subject> --readiness PR_SCALE_NEAR_COMPLETE --idempotency-key <key>
 ./scripts/Invoke-AutomaticCodeReview.ps1 ensure --package <review.zip> --subject <subject> --readiness PR_SCALE_NEAR_COMPLETE --idempotency-key <key>
 ./scripts/Invoke-AutomaticCodeReview.ps1 status --review-id <id>
+./scripts/Invoke-AutomaticCodeReview.ps1 withdraw --review-id <id> --reason <reason> --idempotency-key <key>
 ./scripts/Invoke-AutomaticCodeReview.ps1 complete --review-id <id> --summary <summary>
 ```
 
@@ -65,6 +66,12 @@ supplied package and idempotency identity with the requester's retained reviews 
 one of `ACTIVE_DO_NOT_RESUBMIT`, `RETURNED_COMPLETE_REQUIRED`, `TERMINAL`,
 `ABSENT_SUBMIT_CREATED`, or `CONFLICT`. It never creates a second standard review while another
 review from that requester is open.
+
+`withdraw` is a requester-owned, idempotent pre-activation transition. It accepts only
+`PENDING_DRIVE_DELIVERY`, `QUEUED`, or `READY_TO_ACTIVATE`, records terminal `WITHDRAWN`, and keeps
+all retained custody evidence. It never deletes transport objects. Once activation has started,
+recall cannot be guaranteed; the result must return and be completed as superseded evidence. A
+withdrawn review does not delay a fresh hash-distinct cycle.
 
 Normal delivery and monitoring use the local MCP browser path. Google Drive is an exceptional
 compatibility bridge only and is never retained storage.

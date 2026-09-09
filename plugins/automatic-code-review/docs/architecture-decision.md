@@ -8,8 +8,9 @@ scheduling, browser monitoring, result verification, and durable return. Google 
 only as an exceptional compatibility path for legacy adapters.
 
 Tasks do not need postal mailboxes or postal operations. On first use, the trusted courier may issue
-an exact task/host-bound capability containing only `review-submit`, `review-status`, and
-`review-complete`, using its active courier mailbox as the credential subject. No token is returned
+an exact task/host-bound capability containing only `review-submit`, `review-status`,
+`review-complete`, and `review-withdraw`, using its active courier mailbox as the credential
+subject. No token is returned
 through chat. This is automatic service enrolment, not permission to send or receive mail.
 
 ## Why this boundary
@@ -31,6 +32,9 @@ review-specific client contract in every project.
   review service adapter or its future broker interface.
 - Review reports have REPORT authority only. They cannot authorize edits, merges, pushes,
   publication, or project-cycle closure.
+- Withdrawal is a terminal, requester-owned database transition before activation. It retains
+  package and transport evidence; it is not deletion. Activated external work is never represented
+  as recalled when recall cannot be guaranteed.
 
 ## Deployment transition
 

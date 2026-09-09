@@ -234,6 +234,35 @@ class ReviewClientTests(unittest.TestCase):
             self.assertEqual(payload["result"]["review_id"], "REVIEW-ALREADY-OPEN")
             self.assertEqual(payload["result"]["ensure_state"], "CONFLICT")
 
+    def test_withdraw_is_task_bound_idempotent_and_custody_preserving(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            backend = Path(temporary) / "backend.py"
+            backend.write_text("# test backend\n", encoding="utf-8")
+            observed: list[str] = []
+
+            def invoke(_: Path, arguments: list[str], identity: tuple[str, str]) -> dict[str, object]:
+                observed.extend(arguments)
+                self.assertEqual(identity, ("task-bound-id", "test-host"))
+                return {
+                    "review_id": "REVIEW-001", "requester_thread_id": "task-bound-id",
+                    "requester_host_id": "test-host", "status": "WITHDRAWN",
+                    "withdrawal_reason": "Source changed.",
+                    "withdrawal_idempotency_key": "withdraw-key",
+                    "withdrawn_at": "2026-09-09T00:00:00+00:00",
+                    "withdrawal_replayed": False,
+                    "withdrawal_custody_preserved": True,
+                }
+
+            with patch.object(client, "invoke_backend", side_effect=invoke):
+                code, payload, _ = self._main([
+                    "withdraw", "--review-id", "REVIEW-001",
+                    "--reason", "Source changed.",
+                    "--idempotency-key", "withdraw-key",
+                ], backend)
+            self.assertEqual(code, 0)
+            self.assertEqual(payload["result"]["status"], "WITHDRAWN")
+            self.assertEqual(observed[0], "withdraw")
+
     def test_inspect_rejects_review_id_not_bound_to_package_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
