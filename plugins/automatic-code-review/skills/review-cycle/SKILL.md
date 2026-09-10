@@ -73,8 +73,8 @@ the one-use activation and receipt sequence.
 
 ## Coordination and return
 
-The trusted courier retains exact bytes, activates the assigned reviewer through the local MCP
-browser path, monitors the browser, verifies the returned Markdown attachment, and returns it
+The trusted courier retains exact bytes, activates the assigned reviewer through an immutable
+P2.3 Playwright manifest, monitors the browser, verifies the returned Markdown attachment, and returns it
 durably. Google Drive is an exceptional compatibility bridge only; it is never primary transport or
 retained storage. When a connector exposes only an opaque attachment reference, the courier issues
 an immutable review-bound collection manifest and uses the separate Playwright bridge; successful

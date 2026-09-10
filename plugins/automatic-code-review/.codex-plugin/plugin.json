@@ -1,6 +1,6 @@
 {
   "name": "automatic-code-review",
-  "version": "0.1.0+codex.20260909222114",
+  "version": "0.1.0+codex.20260910000545",
   "description": "Project-independent automatic code review with Post Office-backed transport and custody.",
   "author": {
     "name": "Treatid2",

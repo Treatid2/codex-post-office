@@ -29,6 +29,17 @@ These labels describe engineering gates, not priority severities and not product
   import journal into a second root with identical logical, event, CAS, and verification roots; and
   prove a receipted backup/restore round trip. P2.1 is implemented and rehearsed. It does not make
   vNext authoritative and does not provide the live dispatcher or complete workflows.
+- **P2.2 — browser-result collection increment.** When an authoritative ChatGPT turn identifies a
+  result attachment but exposes no readable local path, issue an immutable collection manifest and
+  use the dedicated Playwright profile to retrieve the exact in-thread or Library artifact. Verify
+  conversation, turn, filename, byte count, SHA-256, and correlation text before importing it into
+  Post Office custody. This is implemented; it does not make browser metadata authoritative.
+- **P2.3 — automatic-review activation increment.** Replace the unreliable native reviewer-task
+  dispatch dependency with an immutable, zero-attachment Playwright activation manifest bound to
+  the Review ID, Activation Dispatch ID, reviewer conversation, browser mailbox generation, exact
+  prompt, and prompt SHA-256. Record `SENT` only after the exact visible marker and resulting user
+  turn UUID are observed. Failed attempts remain durably `PENDING_SEND` and idempotently retryable.
+  This increment does not broaden review authority or resubmit a review transaction.
 
 Later gates implement the complete dispatcher/workflows, perform non-authoritative shadow
 validation, rehearse the final import, and finally execute one separately authorised production

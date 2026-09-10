@@ -78,6 +78,12 @@ to `READY_TO_ACTIVATE` without exposing or sending an activation prompt.
 Normal delivery and monitoring use the local MCP browser path. Google Drive is an exceptional
 compatibility bridge only and is never retained storage.
 
+P2.3 review activation is likewise manifest-bound in the compatible coordinator backend. It binds
+the Review ID, activation dispatch, reviewer conversation, browser generation, exact prompt and
+prompt hash before the Playwright bridge may send. `SENT` requires the bridge's exact visible
+marker and resulting user-turn UUID; failed attempts remain retryable `PENDING_SEND`. Requester
+tasks neither construct these manifests nor receive activation authority.
+
 Review return collection is manifest-bound in the coordinator backend. The backend fixes the
 review, reviewer thread, browser generation, assistant source message, filename, byte count, and
 SHA-256 before the separate Playwright bridge is allowed to download anything. The bridge returns

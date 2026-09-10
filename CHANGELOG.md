@@ -4,6 +4,9 @@ All notable changes to this repository will be documented here.
 
 ## Unreleased
 
+- Implemented P2.3 manifest-bound automatic-review activation through the dedicated Playwright
+  profile, with exact reviewer-thread routing, visible replay suppression, user-turn receipts, and
+  durable retryable failures that leave the review `PENDING_SEND`.
 - Implemented P2.2 native browser-result collection through authenticated ChatGPT Library when the
   in-thread renderer omits a generated-file download control.
 - Added exact Library origin correlation, byte/hash verification, bounded retryable failure codes,

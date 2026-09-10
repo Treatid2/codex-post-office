@@ -31,14 +31,16 @@ This is a **development preview**, not a complete replacement Post Office distri
 - automatic-code-review is a portable, fail-closed client for a separately deployed compatible
   backend. Its trusted administrator must generate a local deployment lock before use.
 - playwright-browser-bridge is operational on supported Windows hosts for idempotent ChatGPT
-  delivery and exact attachment collection, but its raw MCP endpoint remains local-only.
+  delivery, P2.3 automatic-review activation, and exact attachment collection, but its raw MCP
+  endpoint remains local-only.
 
 Functionality will be added in response to demonstrated operational needs. The repository does not
 promise speculative features, perpetual maintenance, compatibility with every Codex release, or
 support for downstream forks.
 
-The delivery-gate names P0, P0.1, P1, P2 and P2.1 are engineering milestones, not defect
-severities. P2.1 is a bounded implementation increment within P2, not a production release.
+The delivery-gate names P0, P0.1, P1, P2, P2.1, P2.2 and P2.3 are engineering milestones, not
+defect severities. The numbered P2.x items are bounded implementation increments within P2, not
+production releases.
 Their exact definitions are in
 [delivery-phases.md](plugins/post-office-next/docs/delivery-phases.md).
 

@@ -15,7 +15,7 @@ The old and new systems will not operate as dual authorities: the old Post Offic
 unchanged until a fully implemented vNext passes rehearsal and optional shadow validation, followed
 by one separately authorised production switchover.
 
-The exact meanings of P0, P0.1, P1, P2, and P2.1 are fixed in
+The exact meanings of P0, P0.1, P1, P2, P2.1, P2.2, and P2.3 are fixed in
 [`docs/delivery-phases.md`](docs/delivery-phases.md); they are engineering gates, not severity labels.
 
 The current delivery spans the P0/P0.1 contract and isolation gates, P1 evidence tooling, and the

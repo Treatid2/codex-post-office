@@ -119,6 +119,22 @@ files, and prefixes the message with `POST-OFFICE-PLAYWRIGHT-DISPATCH <dispatch-
 finds that exact marker and returns the retained receipt without sending a duplicate. Post Office
 records the receipt only after the marker is visible in the bound conversation.
 
+Automatic-review activation uses a separate, zero-attachment contract. The trusted courier asks
+the review backend to issue an immutable activation manifest, then invokes:
+
+```powershell
+./scripts/Invoke-PlaywrightBrowserBridge.ps1 deliver-review-activation `
+  -ManifestPath '<post-office-state>/playwright-activations/<activation-id>/activation-manifest.json'
+```
+
+The manifest binds the review ID, activation dispatch ID, reviewer conversation UUID, mailbox
+generation, exact prompt, and prompt SHA-256. The bridge prefixes the prompt with
+`POST-OFFICE-REVIEW-ACTIVATION <review-id> <dispatch-id>`, uses the visible send control, and reads
+the resulting user-turn UUID. A retry observes the marker and returns the same evidence instead of
+sending again. Only the review backend may convert the exact
+`playwright-chatgpt-review-activation:<review-id>:<dispatch-id>:<thread-id>:<source-message-id>`
+receipt into `activation_state=SENT`; a failed attempt remains durably `PENDING_SEND` and retryable.
+
 For an isolated disposable browser:
 
 ```powershell
@@ -148,8 +164,9 @@ endpoint. The gateway calls the bridge internally and exposes only review-specif
 
 ## Current state
 
-The dedicated bridge is the active local browser-automation path for exact Post Office delivery and
-for collection when the direct task API cannot expose an attachment path. Direct task reads remain
+The dedicated bridge is the active local browser-automation path for exact Post Office delivery,
+automatic-review activation, and collection when the direct task API cannot expose an attachment
+path. Direct task reads remain
 preferred when they are sufficient. The user's everyday Chrome and `ExistingChrome` are not part
 of normal operation. Secure MCP Tunnel and raw public exposure remain out of scope.
 
@@ -165,7 +182,8 @@ it is not the production ChatGPT transport.
 `npm test` exercises broker admission, queue, session-retirement, and response-size boundaries. It
 also verifies authentication detection, bounded retained login sessions, exact-thread navigation,
 mandatory correlation markers, stale-download rejection, exact attachment hashing, manifest-bound
-uploads, Library origin correlation, exact Library candidate selection, and delivery-marker replay
+uploads, review-activation syntax and manifest binding, Library origin correlation, exact Library
+candidate selection, and delivery-marker replay
 suppression. The
 PowerShell integration test proves managed-browser operation, protected-root refusal, lifecycle
 serialization, interrupted start recovery, and changed-process-identity refusal.

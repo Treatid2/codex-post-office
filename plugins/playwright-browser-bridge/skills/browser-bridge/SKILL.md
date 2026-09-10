@@ -53,6 +53,13 @@ through the Post Office receipt operation before treating the message as deliver
 same manifest is the supported recovery path: the exact visible dispatch marker suppresses a
 duplicate send.
 
+Use `deliver-review-activation` only with an immutable `activation-manifest.json` issued by the
+automatic-review backend. This is deliberately distinct from ordinary mail: it contains no
+attachments and binds the exact review, activation dispatch, reviewer conversation, mailbox
+generation, prompt, and prompt hash. Require the exact browser receipt and user-turn UUID, then
+record both atomically through the review backend. On failure, record the bounded retryable failure;
+do not mark the activation sent, invent a native connector receipt, or resubmit the review.
+
 Use `collect-attachment` only with the immutable `collection-manifest.json` issued after an
 authoritative task read. The manifest binds the exact ChatGPT conversation UUID, browser mailbox
 generation, sweep, source turn, attachment reference, filename, byte count, SHA-256, and required

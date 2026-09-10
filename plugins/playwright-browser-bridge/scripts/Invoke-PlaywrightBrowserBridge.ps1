@@ -3,7 +3,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet('preflight', 'start', 'bootstrap', 'deliver-message', 'collect-attachment', 'status', 'probe', 'stop')]
+    [ValidateSet('preflight', 'start', 'bootstrap', 'deliver-message', 'deliver-review-activation', 'collect-attachment', 'status', 'probe', 'stop')]
     [string] $Command,
 
     [ValidateRange(1024, 65535)]
@@ -34,6 +34,7 @@ $collectorScript = Join-Path $PSScriptRoot 'playwright_chatgpt_collect.mjs'
 $directCollectorScript = Join-Path $PSScriptRoot 'playwright_chatgpt_collect_direct.mjs'
 $deliveryScript = Join-Path $PSScriptRoot 'playwright_chatgpt_deliver.mjs'
 $directDeliveryScript = Join-Path $PSScriptRoot 'playwright_chatgpt_deliver_direct.mjs'
+$reviewActivationScript = Join-Path $PSScriptRoot 'playwright_chatgpt_review_activate_direct.mjs'
 $brokerScript = Join-Path $PSScriptRoot 'playwright_mcp_broker.mjs'
 $profileRoot = Join-Path $StateRoot 'chrome-profile'
 $playwrightCoreVersion = '1.63.0-alpha-2026-08-31'
@@ -549,6 +550,29 @@ function Invoke-ChatGptDelivery {
     return ($output -join [Environment]::NewLine | ConvertFrom-Json)
 }
 
+function Invoke-ChatGptReviewActivation {
+    if (-not $ManifestPath) { throw 'deliver-review-activation requires ManifestPath.' }
+    if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
+        throw "Review activation manifest does not exist: $ManifestPath"
+    }
+    $runtime = Get-NodeRuntime
+    $playwrightRuntimeRoot = Get-PlaywrightCoreRuntime $runtime
+    $dedicatedCdp = Get-DedicatedChromeCdpEndpoint
+    if (-not $dedicatedCdp) { throw 'The managed dedicated Chrome CDP endpoint is unavailable.' }
+    $arguments = @(
+        $reviewActivationScript,
+        '--cdp-endpoint', ([string]$dedicatedCdp.endpoint),
+        '--playwright-root', $playwrightRuntimeRoot,
+        '--timeout-ms', ([string]($TimeoutSeconds * 1000)),
+        '--manifest', ([IO.Path]::GetFullPath($ManifestPath))
+    )
+    $output = & $runtime.node @arguments 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "ChatGPT review activation failed: $($output -join [Environment]::NewLine)"
+    }
+    return ($output -join [Environment]::NewLine | ConvertFrom-Json)
+}
+
 $playwrightLauncher = $null
 $brokerLauncher = $null
 $chromeLauncher = $null
@@ -925,6 +949,21 @@ try {
             command = $Command
             bridge = (Get-PublicMetadata $metadata)
             delivery = $delivery
+        }
+        exit 0
+    }
+
+    if ($Command -eq 'deliver-review-activation') {
+        $identities = Assert-OwnedService $metadata
+        if ($metadata.browserMode -ne 'DedicatedChrome') {
+            throw "ChatGPT review activation requires DedicatedChrome; the running mode is $($metadata.browserMode)."
+        }
+        $activation = Invoke-ChatGptReviewActivation
+        Write-Result @{
+            ok = $true
+            command = $Command
+            bridge = (Get-PublicMetadata $metadata)
+            activation = $activation
         }
         exit 0
     }
