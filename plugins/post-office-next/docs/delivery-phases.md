@@ -40,7 +40,21 @@ These labels describe engineering gates, not priority severities and not product
   prompt, and prompt SHA-256. Record `SENT` only after the exact visible marker and resulting user
   turn UUID are observed. Failed attempts remain durably `PENDING_SEND` and idempotently retryable.
   This increment does not broaden review authority or resubmit a review transaction.
+- **P2.4 — courier reconciliation and recovery increment.** Reconcile retained ledger identity
+  with bounded observations of the actual browser or Codex task before changing transport state.
+  Addressable `notLoaded` requester tasks receive queued review returns instead of waiting for an
+  `idle` observation; genuinely busy or unavailable recipients are recorded as
+  `WAITING_FOR_RECIPIENT`. Ambiguous sends become `RECONCILIATION_REQUIRED`; exhausted bounded
+  attempts become `TERMINAL_FAILURE`. The courier can custody-preservingly withdraw or supersede
+  unreceipted ordinary messages and retire obsolete unreceipted Playwright dispatches. Exact
+  manifest replay plus visible dispatch markers recover crashes between packet issue, browser
+  submission, observed turn and receipt recording without blind resubmission. Composer discovery
+  uses editable/accessibility capabilities with tested native and stable-hook fallbacks, not
+  localized placeholder text. Wakes remain event-driven and bounded: requesters need no heartbeat.
+  The acceptance gate injects a stop at each transition and proves no duplicate delivery, no lost
+  package, exact hash/destination-generation binding, return to an unloaded task, safe obsolete
+  dispatch retirement, and clean journal replay/verification. P2.4 does not authorize production
+  cut-over.
 
-Later gates implement the complete dispatcher/workflows, perform non-authoritative shadow
-validation, rehearse the final import, and finally execute one separately authorised production
-switchover. None of P0 through P2 authorises dual-write or production cut-over.
+The next major gate is P3 non-authoritative shadow validation, followed by a separately authorised
+cut-over. None of P0 through P2.4 authorises dual-write or production cut-over.

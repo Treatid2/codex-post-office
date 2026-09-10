@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { discoverComposer, discoverSendAction } from "./chatgpt_composer.mjs";
 
 const values = new Map();
 for (let index = 2; index < process.argv.length; index += 1) {
@@ -147,13 +148,17 @@ try {
     throw new Error("Dedicated ChatGPT profile is unauthenticated or left the manifest-bound conversation");
   }
   let replayed = await markerExists(page);
+  let composerStrategy = null;
+  let sendStrategy = null;
   if (!replayed) {
     await setAttachments(page);
-    const composer = page.locator('#prompt-textarea, textarea[placeholder*="Message"], [contenteditable="true"][data-virtualkeyboard]').first();
-    await composer.waitFor({ state: "attached", timeout: timeoutMs });
+    const composerDiscovery = await discoverComposer(page, timeoutMs);
+    composerStrategy = composerDiscovery.strategy;
+    const composer = composerDiscovery.locator;
     await composer.fill(`${marker()}\n\n${manifest.prompt}`, { timeout: timeoutMs });
-    const send = page.locator('button[data-testid="send-button"], button[aria-label="Send prompt"], button[aria-label="Send"]').first();
-    await send.waitFor({ state: "attached", timeout: timeoutMs });
+    const sendDiscovery = await discoverSendAction(page, composer, timeoutMs);
+    sendStrategy = sendDiscovery.strategy;
+    const send = sendDiscovery.locator;
     const sendDeadline = Date.now() + timeoutMs;
     while (!await send.isEnabled() && Date.now() < sendDeadline) {
       await page.waitForTimeout(500);
@@ -175,6 +180,8 @@ try {
     receiptReference: `playwright-chatgpt:${manifest.dispatchId}:${manifest.threadId}`,
     attachments: manifest.attachments.map(({ sourceName, sizeBytes, sha256 }) => ({ sourceName, sizeBytes, sha256 })),
     replayed,
+    composerDiscovery: composerStrategy,
+    sendDiscovery: sendStrategy,
   }));
 } catch (error) {
   console.error(JSON.stringify({

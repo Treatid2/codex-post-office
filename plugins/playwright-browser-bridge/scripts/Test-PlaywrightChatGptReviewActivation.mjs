@@ -24,14 +24,23 @@ class Locator {
   constructor(kind) { this.kind = kind; }
   filter() { return this; }
   first() { return this; }
+  nth() { return this; }
+  locator(selector) {
+    if (selector === "xpath=ancestor::form[1]") return new Locator("form");
+    if (this.kind === "form" && selector.includes('type="submit"')) return new Locator("send");
+    return new Locator("none");
+  }
   async count() {
     if (this.kind === "messages") return markerVisible ? 1 : 0;
     if (this.kind === "login") return 0;
+    if (this.kind === "none") return 0;
     return 1;
   }
   async getAttribute(name) { return name === "data-message-id" ? sourceMessageId : null; }
   async waitFor() {}
   async fill() {}
+  async isVisible() { return this.kind !== "none"; }
+  async isEditable() { return this.kind === "composer"; }
   async isEnabled() { return true; }
   async click() { markerVisible = true; }
 }
@@ -43,7 +52,12 @@ class Page {
     if (selector.includes("send-button")) return new Locator("send");
     return new Locator("composer");
   }
-  getByRole() { return new Locator("login"); }
+  getByRole(role, options = {}) {
+    if (role === "textbox") return new Locator("composer");
+    if (role === "button" && options.name === "Log in") return new Locator("login");
+    if (role === "button") return new Locator("send");
+    return new Locator("none");
+  }
   async waitForTimeout() {}
 }
 const page = new Page();
@@ -100,6 +114,8 @@ try {
   assert.equal(receipt.reviewId, reviewId);
   assert.equal(receipt.dispatchId, dispatchId);
   assert.equal(receipt.sourceMessageId, "12345678-1234-4234-8234-123456789abc");
+  assert.equal(receipt.composerDiscovery, "accessible-textbox");
+  assert.equal(receipt.sendDiscovery, "composer-form-submit");
   assert.equal(receipt.receiptReference,
     `playwright-chatgpt-review-activation:${reviewId}:${dispatchId}:${threadId}:12345678-1234-4234-8234-123456789abc`);
 

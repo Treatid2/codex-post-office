@@ -4,6 +4,12 @@ All notable changes to this repository will be documented here.
 
 ## Unreleased
 
+- Implemented the P2.4 courier-recovery contract: explicit waiting, reconciliation, supersession
+  and terminal-failure states; custody-preserving withdrawal/retirement; addressable `notLoaded`
+  requester returns; exact replay recovery; and crash-boundary acceptance criteria.
+- Replaced localized ChatGPT composer placeholder matching with accessibility/editability
+  capability discovery plus tested native-textarea, editable-surface, composer-form, accessible
+  action and stable-hook fallbacks.
 - Implemented P2.3 manifest-bound automatic-review activation through the dedicated Playwright
   profile, with exact reviewer-thread routing, visible replay suppression, user-turn receipts, and
   durable retryable failures that leave the review `PENDING_SEND`.

@@ -51,7 +51,13 @@ the prompt or attachment list in the browser task or place either on the command
 result must contain the exact `playwright-chatgpt:<dispatch-id>:<thread-id>` receipt; record that
 through the Post Office receipt operation before treating the message as delivered. Reusing the
 same manifest is the supported recovery path: the exact visible dispatch marker suppresses a
-duplicate send.
+duplicate send. Composer discovery is capability-based: prefer an enabled editable accessibility
+textbox, then a native textarea or editable surface; prefer the composer's own form submission,
+then an accessible send action, then the stable ChatGPT test hook. Never add localized placeholder
+text as a selector. If the outcome is ambiguous, have the Post Office caller record
+`RECONCILIATION_REQUIRED` before yielding. A genuinely non-addressable recipient is
+`WAITING_FOR_RECIPIENT`; an obsolete unreceipted dispatch must be durably superseded before a new
+manifest is issued.
 
 Use `deliver-review-activation` only with an immutable `activation-manifest.json` issued by the
 automatic-review backend. This is deliberately distinct from ordinary mail: it contains no

@@ -119,6 +119,13 @@ files, and prefixes the message with `POST-OFFICE-PLAYWRIGHT-DISPATCH <dispatch-
 finds that exact marker and returns the retained receipt without sending a duplicate. Post Office
 records the receipt only after the marker is visible in the bound conversation.
 
+P2.4 discovers the composer by enabled, editable textbox capability exposed through the browser's
+accessibility semantics. Native `textarea` and editable surfaces are bounded fallbacks; submission
+prefers the composer's own form action, then an accessible send action, then the stable ChatGPT
+test hook. Localized placeholder strings are not selectors. The bridge still does not infer ledger
+state: the courier records `WAITING_FOR_RECIPIENT`, `RECONCILIATION_REQUIRED`, `SUPERSEDED`, or
+`TERMINAL_FAILURE`, and retries only the original immutable manifest.
+
 Automatic-review activation uses a separate, zero-attachment contract. The trusted courier asks
 the review backend to issue an immutable activation manifest, then invokes:
 
@@ -183,7 +190,7 @@ it is not the production ChatGPT transport.
 also verifies authentication detection, bounded retained login sessions, exact-thread navigation,
 mandatory correlation markers, stale-download rejection, exact attachment hashing, manifest-bound
 uploads, review-activation syntax and manifest binding, Library origin correlation, exact Library
-candidate selection, and delivery-marker replay
+candidate selection, all composer/send discovery fallbacks, and delivery-marker replay
 suppression. The
 PowerShell integration test proves managed-browser operation, protected-root refusal, lifecycle
 serialization, interrupted start recovery, and changed-process-identity refusal.

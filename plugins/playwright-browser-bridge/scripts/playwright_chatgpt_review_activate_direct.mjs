@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { discoverComposer, discoverSendAction } from "./chatgpt_composer.mjs";
 
 const values = new Map();
 for (let index = 2; index < process.argv.length; index += 1) {
@@ -106,17 +107,19 @@ try {
       await page.getByRole("button", { name: "Log in", exact: true }).count()) {
     throw new Error("Dedicated ChatGPT profile is unauthenticated or left the manifest-bound conversation");
   }
-  const composer = page.locator('#prompt-textarea, textarea[placeholder*="Message"], [contenteditable="true"][data-virtualkeyboard]').first();
-  await composer.waitFor({ state: "attached", timeout: timeoutMs });
+  const composerDiscovery = await discoverComposer(page, timeoutMs);
+  const composer = composerDiscovery.locator;
   // Conversation turns hydrate after DOMContentLoaded. Do not mistake that
   // interval for an absent marker and emit a duplicate activation.
   await page.waitForTimeout(1500);
   let sourceMessageId = await findSubmittedTurn(page);
   const replayed = Boolean(sourceMessageId);
+  let sendStrategy = null;
   if (!sourceMessageId) {
     await composer.fill(`${marker()}\n\n${manifest.prompt}`, { timeout: timeoutMs });
-    const send = page.locator('button[data-testid="send-button"], button[aria-label="Send prompt"], button[aria-label="Send"]').first();
-    await send.waitFor({ state: "attached", timeout: timeoutMs });
+    const sendDiscovery = await discoverSendAction(page, composer, timeoutMs);
+    sendStrategy = sendDiscovery.strategy;
+    const send = sendDiscovery.locator;
     const deadline = Date.now() + timeoutMs;
     while (!await send.isEnabled() && Date.now() < deadline) await page.waitForTimeout(500);
     if (!await send.isEnabled()) throw new Error("ChatGPT send action did not become enabled");
@@ -137,6 +140,8 @@ try {
     promptSha256: manifest.promptSha256,
     receiptReference: `playwright-chatgpt-review-activation:${manifest.reviewId}:${manifest.dispatchId}:${manifest.threadId}:${sourceMessageId}`,
     replayed,
+    composerDiscovery: composerDiscovery.strategy,
+    sendDiscovery: sendStrategy,
   }));
 } catch (error) {
   console.error(JSON.stringify({
