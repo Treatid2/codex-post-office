@@ -4,6 +4,10 @@ All notable changes to this repository will be documented here.
 
 ## Unreleased
 
+- Replaced the one-open-review-per-requester gate with a 30-minute standard submission interval:
+  requesters may now retain unlimited hash-distinct concurrent reviews while every reviewer browser
+  keeps its one-active-review FIFO. Verified results return independently instead of being
+  suppressed merely because a newer requester review exists.
 - Implemented the P2.4 courier-recovery contract: explicit waiting, reconciliation, supersession
   and terminal-failure states; custody-preserving withdrawal/retirement; addressable `notLoaded`
   requester returns; exact replay recovery; and crash-boundary acceptance criteria.

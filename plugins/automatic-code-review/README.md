@@ -64,8 +64,9 @@ the original idempotency key preserved for reconciliation.
 `ensure` is the crash-safe submission boundary. In one backend transaction it reconciles the
 supplied package and idempotency identity with the requester's retained reviews and returns exactly
 one of `ACTIVE_DO_NOT_RESUBMIT`, `RETURNED_COMPLETE_REQUIRED`, `TERMINAL`,
-`ABSENT_SUBMIT_CREATED`, or `CONFLICT`. It never creates a second standard review while another
-review from that requester is open.
+`ABSENT_SUBMIT_CREATED`, or `CONFLICT`. A requester may retain any number of hash-distinct open
+reviews. Standard mode creates at most one new review per 30-minute interval; exact package and
+idempotency replays resolve to the retained transaction.
 
 `withdraw` is a requester-owned, idempotent pre-activation transition. It accepts only
 `PENDING_DRIVE_DELIVERY`, `QUEUED`, or `READY_TO_ACTIVATE`, records terminal `WITHDRAWN`, and keeps

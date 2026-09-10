@@ -48,8 +48,10 @@ must be PR-scale, substantially integrated, under 1 MiB compressed, hash-complet
 publication, and project authority remain prohibited.
 
 Run `inspect`, then prefer `ensure` with `PR_SCALE_NEAR_COMPLETE`, a unique idempotency key, and no
-reviewer override. `ensure` atomically checks the exact idempotency key, package digest, current open
-review and cooldown before creating anything. Interpret its result as follows:
+reviewer override. `ensure` atomically checks the exact idempotency key, package digest, and
+30-minute standard submission interval before creating anything. Hash-distinct reviews may coexist
+in the requester queue; the interval limits creation rate, not open-review count. Interpret its
+result as follows:
 
 - `ACTIVE_DO_NOT_RESUBMIT`: retain and monitor the returned Review ID.
 - `RETURNED_COMPLETE_REQUIRED`: evaluate the retained return and complete that Review ID.

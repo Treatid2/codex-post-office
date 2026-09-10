@@ -209,21 +209,22 @@ class ReviewClientTests(unittest.TestCase):
             self.assertEqual(observed[0], "ensure")
             self.assertEqual(observed[observed.index("--requester-thread") + 1], "task-bound-id")
 
-    def test_ensure_conflict_can_report_requesters_different_open_review(self) -> None:
+    def test_ensure_conflict_can_report_requester_cooldown(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             backend = root / "backend.py"
             backend.write_text("# test backend\n", encoding="utf-8")
             package = self._package(root, "REVIEW-REQUESTED")
             response = {
-                "review_id": "REVIEW-ALREADY-OPEN",
+                "review_id": "REVIEW-MOST-RECENT",
                 "requester_thread_id": "task-bound-id",
                 "requester_host_id": "test-host",
                 "status": "REVIEW_ACTIVE",
                 "ensure_state": "CONFLICT",
-                "ensure_match": "REQUESTER_OPEN_REVIEW",
+                "ensure_match": "REQUESTER_COOLDOWN",
                 "created": False,
-                "conflict_reason": "OPEN_REVIEW_DIFFERENT_PACKAGE",
+                "conflict_reason": "COOLDOWN_ACTIVE",
+                "eligible_at": "2026-09-10T12:30:00Z",
             }
             with patch.object(client, "invoke_backend", return_value=response):
                 code, payload, _ = self._main([
@@ -231,7 +232,7 @@ class ReviewClientTests(unittest.TestCase):
                     "--readiness", "PR_SCALE_NEAR_COMPLETE", "--idempotency-key", "key",
                 ], backend)
             self.assertEqual(code, 0)
-            self.assertEqual(payload["result"]["review_id"], "REVIEW-ALREADY-OPEN")
+            self.assertEqual(payload["result"]["review_id"], "REVIEW-MOST-RECENT")
             self.assertEqual(payload["result"]["ensure_state"], "CONFLICT")
 
     def test_withdraw_is_task_bound_idempotent_and_custody_preserving(self) -> None:
