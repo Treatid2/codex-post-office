@@ -34,17 +34,21 @@ BACKEND_TIMEOUT_SECONDS = 120
 IDENTIFIER = re.compile(r"^[A-Za-z0-9._-]+$")
 REVIEW_ID_LINE = re.compile(r"^REVIEW ID:\s*([A-Za-z0-9._-]+)\s*$", re.MULTILINE)
 PACKAGE_NAME_LINE = re.compile(r"^PACKAGE NAME:\s*(\S+)\s*$", re.MULTILINE)
-RUNNER = """
-import base64, json, sys, types
-bundle = json.loads(sys.stdin.buffer.read())
-module = types.ModuleType("codex_comms")
-module.__file__ = bundle["codex_comms_path"]
-exec(compile(base64.b64decode(bundle["codex_comms"]), module.__file__, "exec"), module.__dict__)
-sys.modules["codex_comms"] = module
-sys.argv = [bundle["auto_review_path"], *sys.argv[1:]]
-scope = {"__name__": "__main__", "__file__": bundle["auto_review_path"]}
-exec(compile(base64.b64decode(bundle["auto_review"]), bundle["auto_review_path"], "exec"), scope, scope)
-"""
+# Keep this command-line program on one physical line.  The deployment lock may
+# intentionally point at the stable Windows ``python.cmd`` entry point; cmd.exe
+# treats embedded newlines in a ``python -c`` argument as command separators and
+# can otherwise turn a backend invocation into a silent, successful no-op.
+RUNNER = (
+    'import base64,json,sys,types;'
+    'bundle=json.loads(sys.stdin.buffer.read());'
+    'module=types.ModuleType("codex_comms");'
+    'module.__file__=bundle["codex_comms_path"];'
+    'exec(compile(base64.b64decode(bundle["codex_comms"]),module.__file__,"exec"),module.__dict__);'
+    'sys.modules["codex_comms"]=module;'
+    'sys.argv=[bundle["auto_review_path"],*sys.argv[1:]];'
+    'scope={"__name__":"__main__","__file__":bundle["auto_review_path"]};'
+    'exec(compile(base64.b64decode(bundle["auto_review"]),bundle["auto_review_path"],"exec"),scope,scope)'
+)
 
 
 class Deployment:

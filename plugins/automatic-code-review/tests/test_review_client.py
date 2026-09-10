@@ -390,6 +390,10 @@ class ReviewClientTests(unittest.TestCase):
         self.assertNotIn("PYTHONPATH", environment)
         self.assertEqual(environment["CODEX_THREAD_ID"], "task-bound-id")
 
+    def test_backend_runner_is_safe_through_windows_cmd_entrypoint(self) -> None:
+        self.assertNotIn("\n", client.RUNNER)
+        self.assertNotIn("\r", client.RUNNER)
+
     def test_session_only_identity_is_explicitly_unsupported(self) -> None:
         with patch.dict(os.environ, {"CODEX_THREAD_ID": "", "CODEX_SESSION_ID": "session-only"}):
             with self.assertRaises(client.ClientError) as raised:
