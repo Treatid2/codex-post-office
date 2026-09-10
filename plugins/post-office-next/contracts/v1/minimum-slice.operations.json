@@ -22,7 +22,6 @@
     "endpoint.allocate",
     "endpoint.revoke",
     "hub.reconcile.apply",
-    "hub.status",
     "integration.record",
     "interface.deprecate",
     "interface.read",
@@ -123,6 +122,9 @@
   "implementedInP0P1": [
     "hub.snapshot",
     "hub.reconcile.preview"
+  ],
+  "implementedInP3_1": [
+    "hub.status"
   ],
   "operations": [
     "attention.list",

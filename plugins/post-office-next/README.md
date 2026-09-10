@@ -15,11 +15,11 @@ The old and new systems will not operate as dual authorities: the old Post Offic
 unchanged until a fully implemented vNext passes rehearsal and optional shadow validation, followed
 by one separately authorised production switchover.
 
-The exact meanings of P0, P0.1, P1, P2, P2.1, P2.2, and P2.3 are fixed in
+The exact meanings of P0, P0.1, P1, P2, P2.1, P2.2, P2.3, P2.4, and P3.1 are fixed in
 [`docs/delivery-phases.md`](docs/delivery-phases.md); they are engineering gates, not severity labels.
 
-The current delivery spans the P0/P0.1 contract and isolation gates, P1 evidence tooling, and the
-isolated P2/P2.1 database and migration foundation:
+The current delivery spans the P0/P0.1 contract and isolation gates, P1 evidence tooling, the
+isolated P2/P2.1 database and migration foundation, and the P3.1 operational kernel:
 
 - versioned entity, operation-request, operation-result, and diagnostic JSON Schemas;
 - a complete operation catalogue with per-aggregate concurrency rules;
@@ -31,10 +31,14 @@ isolated P2/P2.1 database and migration foundation:
 - local content-addressed payload/evidence custody with byte-for-byte verification;
 - a hash-chained import journal that rebuilds the database and CAS to identical logical roots; and
 - verified database backup and restore with immutable receipts; and
+- authenticated, default-deny contract dispatch with durable request replay and conflict detection;
+- reusable aggregate-CAS and hash-chained mutation-event primitives;
+- the first kernel-routed operation, `hub.status`; and
 - stable, machine-readable diagnostics and receipts.
 
-The migration commands write only a new, isolated rehearsal root. No production mutation, repair,
-routing, wake, browser poke, automatic review, or cut-over command exists in this plugin.
+The migration and kernel commands write only an explicitly selected isolated or non-authoritative
+shadow database. No production routing, wake, browser poke, automatic review, authority activation,
+or cut-over command exists in this plugin.
 
 Automatic code review is deliberately a companion tool, not part of this control-plane plugin.
 Its project-independent interface can use Post Office custody, transient browser transport,
@@ -57,6 +61,10 @@ See [`docs/automatic-review-boundary.md`](docs/automatic-review-boundary.md).
 ./scripts/Invoke-PostOfficeNext.ps1 database restore --path <backup.sqlite3> --backup-receipt <backup-receipt.json> --destination <restored.sqlite3> --receipt <restore-receipt.json>
 ./scripts/Invoke-PostOfficeNext.ps1 migration import --capture-root <frozen-capture> --baseline-payload-manifest <manifest.json> --payload-delta-manifest <manifest.json> --output-root <new-rehearsal-root>
 ./scripts/Invoke-PostOfficeNext.ps1 migration replay --source-root <imported-rehearsal-root> --output-root <new-replay-root>
+./scripts/Invoke-PostOfficeNext.ps1 kernel credential-create --output <credential.json> --capability-id <id>
+./scripts/Invoke-PostOfficeNext.ps1 kernel bootstrap --path <isolated-vnext.sqlite3> --credential <credential.json> --actor-id <id> --actor-kind HUMAN --actor-role authenticated-reader --mode ISOLATED
+./scripts/Invoke-PostOfficeNext.ps1 kernel inspect --path <isolated-vnext.sqlite3>
+./scripts/Invoke-PostOfficeNext.ps1 kernel execute --path <isolated-vnext.sqlite3> --request <request.json> --credential <credential.json>
 ```
 
 Every operational command emits one JSON result on stdout and returns a non-zero exit code with a
@@ -71,5 +79,7 @@ digest, and contained member path all validate.
 
 See [`docs/deterministic-migration-v01.md`](docs/deterministic-migration-v01.md) for P2.1's
 preservation rules, replay proof, and current limitations.
+Read [`docs/operational-kernel-v01.md`](docs/operational-kernel-v01.md) before using the P3.1
+commands.
 
 This plugin is distributed under the Mozilla Public License 2.0; see the repository `LICENSE`.

@@ -258,6 +258,39 @@ def inspect_database(database_path: Path, plugin_root: Path | None = None) -> di
         con.close()
 
 
+def validate_operational_connection(
+    con: sqlite3.Connection,
+    plugin_root: Path,
+) -> None:
+    """Fail closed when an already-open writer is not the exact vNext schema."""
+    expected_migrations = _expected_migrations(plugin_root)
+    actual_migrations = [
+        {"version": int(row[0]), "name": str(row[1]), "sha256": str(row[2])}
+        for row in con.execute(
+            "SELECT version,name,sha256 FROM schema_migrations ORDER BY version"
+        )
+    ]
+    failures: list[str] = []
+    if int(con.execute("PRAGMA application_id").fetchone()[0]) != APPLICATION_ID:
+        failures.append("application_id")
+    if int(con.execute("PRAGMA user_version").fetchone()[0]) != expected_migrations[-1]["version"]:
+        failures.append("user_version")
+    if actual_migrations != expected_migrations:
+        failures.append("migration_set")
+    if _schema_objects(con) != _expected_schema(plugin_root):
+        failures.append("schema_objects")
+    if str(con.execute("PRAGMA journal_mode").fetchone()[0]).upper() != "WAL":
+        failures.append("journal_mode")
+    if str(con.execute("PRAGMA quick_check(1)").fetchone()[0]) != "ok":
+        failures.append("quick_check")
+    if failures:
+        raise PostOfficeError(
+            "PON_DATABASE_INVALID",
+            "Operational database does not match the exact Post Office Next identity",
+            {"identityFailures": failures},
+        )
+
+
 def backup_database(
     database_path: Path,
     destination_path: Path,

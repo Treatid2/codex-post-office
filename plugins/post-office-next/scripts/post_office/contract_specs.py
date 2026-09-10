@@ -563,7 +563,13 @@ def build_operation_specs() -> dict[str, dict[str, Any]]:
                 "mutates": mutates,
                 "minimumAuthority": MINIMUM_AUTHORITIES[operation],
                 "parameters": obj(properties, required),
-                "contractStatus": "IMPLEMENTED_P0_P1" if operation in {"hub.snapshot", "hub.reconcile.preview"} else "CONTRACT_ONLY",
+                "contractStatus": (
+                    "IMPLEMENTED_P0_P1"
+                    if operation in {"hub.snapshot", "hub.reconcile.preview"}
+                    else "IMPLEMENTED_P3_1"
+                    if operation == "hub.status"
+                    else "CONTRACT_ONLY"
+                ),
                 "catalogueSource": "POST_OFFICE_NEXT_EXTENSION" if operation in LOCAL_EXTENSION_OPERATIONS else "FGPM_WISHLIST",
             }
     return specs
@@ -692,12 +698,44 @@ def build_result_schema(operation: str, spec: dict[str, Any]) -> dict[str, Any]:
         "aggregateVersion": {"type": "integer", "minimum": 0}, "createdIds": array(identifier()),
         "warnings": array(diagnostic), "receipt": receipt, "diagnostic": diagnostic,
     }
+    if operation == "hub.status":
+        properties["status"] = obj(
+            {
+                "instanceId": identifier(),
+                "mode": string(enum=["ISOLATED", "SHADOW"]),
+                "status": string(enum=["READY", "SEALED"]),
+                "contractRoot": sha256(),
+                "databaseUserVersion": {"type": "integer", "minimum": 1},
+                "eventCount": {"type": "integer", "minimum": 0},
+                "lastEventId": {"type": ["string", "null"]},
+                "idempotencyRecordCountBeforeRequest": {"type": "integer", "minimum": 0},
+                "implementedOperations": array(string(), minimum=1),
+            },
+            [
+                "instanceId", "mode", "status", "contractRoot", "databaseUserVersion",
+                "eventCount", "lastEventId", "idempotencyRecordCountBeforeRequest",
+                "implementedOperations",
+            ],
+        )
     example = {"schemaVersion": "1", "requestId": "PON-REQUEST-001", "operation": operation, "ok": True,
                "beforeRoot": "sha256:" + "1" * 64, "afterRoot": "sha256:" + "1" * 64,
                "aggregateVersion": 0, "createdIds": [], "warnings": [],
                "receipt": {"receiptId": "PON-RECEIPT-001", "requestSha256": "sha256:" + "2" * 64,
                            "recordedAt": "2026-09-04T12:00:00Z", "stateRoot": "sha256:" + "1" * 64}}
     success_required = ["ok", "beforeRoot", "afterRoot", "createdIds", "warnings", "receipt"]
+    if operation == "hub.status":
+        success_required.append("status")
+        example["status"] = {
+            "instanceId": "PON-KERNEL",
+            "mode": "ISOLATED",
+            "status": "READY",
+            "contractRoot": "sha256:" + "3" * 64,
+            "databaseUserVersion": 3,
+            "eventCount": 0,
+            "lastEventId": None,
+            "idempotencyRecordCountBeforeRequest": 0,
+            "implementedOperations": ["hub.status"],
+        }
     if spec["mutates"]:
         success_required.extend(["eventId", "aggregateVersion"])
         example["eventId"] = "PON-EVENT-001"

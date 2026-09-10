@@ -13,6 +13,12 @@ from .contracts import generate_contracts, validate_contracts
 from .database import backup_database, initialize_database, inspect_database, restore_database
 from .diagnostics import PostOfficeError
 from .legacy import capture_state, source_manifest
+from .kernel import (
+    bootstrap_kernel,
+    create_kernel_credential,
+    execute_operation,
+    inspect_kernel,
+)
 from .migration import import_legacy_capture, replay_migration
 from .reconciliation import reconcile_preview
 from .snapshot import create_snapshot
@@ -64,6 +70,17 @@ def _parser() -> argparse.ArgumentParser:
     migration.add_argument("--payload-delta-manifest")
     migration.add_argument("--source-root")
     migration.add_argument("--output-root", required=True)
+    kernel = sub.add_parser("kernel")
+    kernel.add_argument("action", choices=["credential-create", "bootstrap", "inspect", "execute"])
+    kernel.add_argument("--path")
+    kernel.add_argument("--credential")
+    kernel.add_argument("--output")
+    kernel.add_argument("--capability-id")
+    kernel.add_argument("--actor-id")
+    kernel.add_argument("--actor-kind", choices=["HUMAN", "BROWSER", "COURIER", "ENDPOINT", "SYSTEM"])
+    kernel.add_argument("--actor-role")
+    kernel.add_argument("--mode", choices=["ISOLATED", "SHADOW"], default="ISOLATED")
+    kernel.add_argument("--request")
     return parser
 
 
@@ -127,6 +144,36 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
         if not args.source_root:
             raise PostOfficeError("PON_INPUT_INVALID", "migration replay requires --source-root")
         return replay_migration(Path(args.source_root), Path(args.output_root), plugin_root)
+    if args.command == "kernel":
+        if args.action == "credential-create":
+            if not args.output or not args.capability_id:
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "kernel credential-create requires --output and --capability-id",
+                )
+            return create_kernel_credential(Path(args.output), args.capability_id)
+        if not args.path:
+            raise PostOfficeError("PON_INPUT_INVALID", f"kernel {args.action} requires --path")
+        if args.action == "inspect":
+            return inspect_kernel(Path(args.path), plugin_root)
+        if args.action == "bootstrap":
+            if not all((args.credential, args.actor_id, args.actor_kind, args.actor_role)):
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "kernel bootstrap requires --credential, --actor-id, --actor-kind and --actor-role",
+                )
+            return bootstrap_kernel(
+                Path(args.path), Path(args.credential), actor_id=args.actor_id,
+                actor_kind=args.actor_kind, actor_role=args.actor_role,
+                mode=args.mode, plugin_root=plugin_root,
+            )
+        if not args.request or not args.credential:
+            raise PostOfficeError(
+                "PON_INPUT_INVALID", "kernel execute requires --request and --credential"
+            )
+        return execute_operation(
+            Path(args.path), Path(args.request), Path(args.credential), plugin_root
+        )
     raise PostOfficeError("PON_INPUT_INVALID", "Unsupported command")
 
 

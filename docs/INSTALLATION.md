@@ -48,12 +48,32 @@ Start a new Codex task after installation or update so newly installed skills ar
 ## Post Office Next
 
 The current plugin provides contracts, capture, reconciliation-preview, isolated database
-foundation, and deterministic migration/replay/recovery commands. It must not be pointed at
+foundation, deterministic migration/replay/recovery commands, and the P3.1 operational kernel. The
+kernel is limited to `ISOLATED` and non-authoritative `SHADOW` mode; it must not be pointed at
 production state for mutation or cutover.
 
 ~~~powershell
 ./plugins/post-office-next/scripts/Invoke-PostOfficeNext.ps1 contracts validate
 ~~~
+
+Initialize a fresh isolated database and bootstrap the least-authority P3.1 operator capability:
+
+~~~powershell
+./plugins/post-office-next/scripts/Invoke-PostOfficeNext.ps1 database initialize `
+  --path <isolated-root>/post-office-next.sqlite3
+./plugins/post-office-next/scripts/Invoke-PostOfficeNext.ps1 kernel credential-create `
+  --output <isolated-root>/operator-credential.json `
+  --capability-id PON-CAPABILITY-OPERATOR
+./plugins/post-office-next/scripts/Invoke-PostOfficeNext.ps1 kernel bootstrap `
+  --path <isolated-root>/post-office-next.sqlite3 `
+  --credential <isolated-root>/operator-credential.json `
+  --actor-id PON-ACTOR-OPERATOR --actor-kind HUMAN `
+  --actor-role authenticated-reader --mode ISOLATED
+~~~
+
+P3.1 routes only `hub.status`. It does not route mail, ingest a shadow feed, mutate catalogue state
+or switch authority. See `plugins/post-office-next/docs/operational-kernel-v01.md` for the request
+contract and explicit non-capabilities.
 
 Set `CODEX_PYTHON` to the absolute path of a trusted Python 3 entry point before invoking the
 wrapper. Codex-managed installations should use their stable shared Python entry point rather than

@@ -106,7 +106,7 @@
   ],
   "title": "hub.status request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_1",
   "x-minimumAuthority": "authenticated-reader",
   "x-mutates": false
 }

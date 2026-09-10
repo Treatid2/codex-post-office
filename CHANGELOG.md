@@ -4,6 +4,9 @@ All notable changes to this repository will be documented here.
 
 ## Unreleased
 
+- Built the P3.1 isolated operational kernel with fail-closed capability authentication, exact
+  actor binding, default-deny dispatch, durable request-id idempotency, aggregate compare-and-swap
+  and hash-chained event primitives, plus the first callable `hub.status` operation.
 - Replaced the one-open-review-per-requester gate with a 30-minute standard submission interval:
   requesters may now retain unlimited hash-distinct concurrent reviews while every reviewer browser
   keeps its one-active-review FIFO. Verified results return independently instead of being

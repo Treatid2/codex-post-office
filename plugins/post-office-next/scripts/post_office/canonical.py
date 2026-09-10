@@ -177,12 +177,18 @@ def _sqlite_value(value: Any) -> Any:
     return {"text": str(value)}
 
 
-def sqlite_content_identity(con: sqlite3.Connection) -> dict[str, Any]:
+def sqlite_content_identity(
+    con: sqlite3.Connection,
+    *,
+    excluded_tables: Iterable[str] = (),
+) -> dict[str, Any]:
+    excluded = set(excluded_tables)
     tables = [
         str(row[0])
         for row in con.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
         )
+        if str(row[0]) not in excluded
     ]
     table_identities: list[dict[str, Any]] = []
     for table in tables:

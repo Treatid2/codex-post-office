@@ -23,6 +23,14 @@ DIAGNOSTICS: dict[str, dict[str, Any]] = {
     "PON_PRODUCTION_MUTATION_FORBIDDEN": {"severity": "ERROR", "retryable": False},
     "PON_DATABASE_INVALID": {"severity": "ERROR", "retryable": False},
     "PON_MIGRATION_MISMATCH": {"severity": "ERROR", "retryable": False},
+    "PON_KERNEL_NOT_BOOTSTRAPPED": {"severity": "ERROR", "retryable": False},
+    "PON_KERNEL_ALREADY_BOOTSTRAPPED": {"severity": "ERROR", "retryable": False},
+    "PON_CREDENTIAL_INVALID": {"severity": "ERROR", "retryable": False},
+    "PON_AUTHENTICATION_FAILED": {"severity": "ERROR", "retryable": False},
+    "PON_AUTHORIZATION_DENIED": {"severity": "ERROR", "retryable": False},
+    "PON_IDEMPOTENCY_CONFLICT": {"severity": "ERROR", "retryable": False},
+    "PON_OPERATION_NOT_IMPLEMENTED": {"severity": "ERROR", "retryable": False},
+    "PON_CONCURRENCY_CONFLICT": {"severity": "ERROR", "retryable": True},
     "PON_INTERNAL_ERROR": {"severity": "ERROR", "retryable": False},
 }
 

@@ -11,7 +11,7 @@ environment compatibility, operation and upgrades remain the responsibility of e
 The repository is a Codex-compatible marketplace containing three separately installable plugins:
 
 - [post-office-next](plugins/post-office-next) — versioned contracts, legacy capture and
-  reconciliation evidence, and an isolated transactional database foundation.
+  reconciliation evidence, an isolated transactional database, and the P3.1 operational kernel.
 - [automatic-code-review](plugins/automatic-code-review) — a least-authority review requester
   that can use a compatible Post Office backend without granting postal operations.
 - [playwright-browser-bridge](plugins/playwright-browser-bridge) — a singleton, loopback-only
@@ -25,7 +25,8 @@ browser/CDP authority, and the browser bridge owns no mail, review, or authorisa
 This is a **development preview**, not a complete replacement Post Office distribution.
 
 - The post-office-next plugin implements the P0 contract gate, P0.1 isolation gate, P1 legacy
-  evidence capture, the P2 database foundation, and the P2.1 deterministic migration rehearsal.
+  evidence capture, the P2 database foundation, P2.1 deterministic migration rehearsal, and the
+  isolated P3.1 authenticated operation kernel.
 - It does not yet implement the complete production mailbox, routing, migration, or cutover
   runtime.
 - automatic-code-review is a portable, fail-closed client for a separately deployed compatible
@@ -38,7 +39,7 @@ Functionality will be added in response to demonstrated operational needs. The r
 promise speculative features, perpetual maintenance, compatibility with every Codex release, or
 support for downstream forks.
 
-The delivery-gate names P0, P0.1, P1, P2, P2.1, P2.2, P2.3 and P2.4 are engineering milestones, not
+The delivery-gate names P0, P0.1, P1, P2, P2.1, P2.2, P2.3, P2.4 and P3.1 are engineering milestones, not
 defect severities. The numbered P2.x items are bounded implementation increments within P2, not
 production releases.
 Their exact definitions are in

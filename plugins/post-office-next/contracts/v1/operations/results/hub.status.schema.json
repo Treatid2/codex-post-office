@@ -18,6 +18,19 @@
       },
       "requestId": "PON-REQUEST-001",
       "schemaVersion": "1",
+      "status": {
+        "contractRoot": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "databaseUserVersion": 3,
+        "eventCount": 0,
+        "idempotencyRecordCountBeforeRequest": 0,
+        "implementedOperations": [
+          "hub.status"
+        ],
+        "instanceId": "PON-KERNEL",
+        "lastEventId": null,
+        "mode": "ISOLATED",
+        "status": "READY"
+      },
       "warnings": []
     },
     {
@@ -58,7 +71,8 @@
         "afterRoot",
         "createdIds",
         "warnings",
-        "receipt"
+        "receipt",
+        "status"
       ],
       "type": "object"
     },
@@ -104,13 +118,21 @@
           "properties": {
             "code": {
               "enum": [
+                "PON_AUTHENTICATION_FAILED",
+                "PON_AUTHORIZATION_DENIED",
+                "PON_CONCURRENCY_CONFLICT",
                 "PON_CONTRACT_FIXTURE_UNEXPECTED",
                 "PON_CONTRACT_INVALID",
+                "PON_CREDENTIAL_INVALID",
                 "PON_DATABASE_INVALID",
+                "PON_IDEMPOTENCY_CONFLICT",
                 "PON_INPUT_INVALID",
                 "PON_INTERNAL_ERROR",
+                "PON_KERNEL_ALREADY_BOOTSTRAPPED",
+                "PON_KERNEL_NOT_BOOTSTRAPPED",
                 "PON_LEGACY_SCHEMA_UNSUPPORTED",
                 "PON_MIGRATION_MISMATCH",
+                "PON_OPERATION_NOT_IMPLEMENTED",
                 "PON_OUTPUT_EXISTS",
                 "PON_PATH_CONFLICT",
                 "PON_PATH_NOT_FOUND",
@@ -199,13 +221,21 @@
       "properties": {
         "code": {
           "enum": [
+            "PON_AUTHENTICATION_FAILED",
+            "PON_AUTHORIZATION_DENIED",
+            "PON_CONCURRENCY_CONFLICT",
             "PON_CONTRACT_FIXTURE_UNEXPECTED",
             "PON_CONTRACT_INVALID",
+            "PON_CREDENTIAL_INVALID",
             "PON_DATABASE_INVALID",
+            "PON_IDEMPOTENCY_CONFLICT",
             "PON_INPUT_INVALID",
             "PON_INTERNAL_ERROR",
+            "PON_KERNEL_ALREADY_BOOTSTRAPPED",
+            "PON_KERNEL_NOT_BOOTSTRAPPED",
             "PON_LEGACY_SCHEMA_UNSUPPORTED",
             "PON_MIGRATION_MISMATCH",
+            "PON_OPERATION_NOT_IMPLEMENTED",
             "PON_OUTPUT_EXISTS",
             "PON_PATH_CONFLICT",
             "PON_PATH_NOT_FOUND",
@@ -310,19 +340,96 @@
     "schemaVersion": {
       "const": "1"
     },
+    "status": {
+      "additionalProperties": false,
+      "properties": {
+        "contractRoot": {
+          "minLength": 1,
+          "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "databaseUserVersion": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "eventCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "idempotencyRecordCountBeforeRequest": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "implementedOperations": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "instanceId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "lastEventId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mode": {
+          "enum": [
+            "ISOLATED",
+            "SHADOW"
+          ],
+          "minLength": 1,
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "READY",
+            "SEALED"
+          ],
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "instanceId",
+        "mode",
+        "status",
+        "contractRoot",
+        "databaseUserVersion",
+        "eventCount",
+        "lastEventId",
+        "idempotencyRecordCountBeforeRequest",
+        "implementedOperations"
+      ],
+      "type": "object"
+    },
     "warnings": {
       "items": {
         "additionalProperties": false,
         "properties": {
           "code": {
             "enum": [
+              "PON_AUTHENTICATION_FAILED",
+              "PON_AUTHORIZATION_DENIED",
+              "PON_CONCURRENCY_CONFLICT",
               "PON_CONTRACT_FIXTURE_UNEXPECTED",
               "PON_CONTRACT_INVALID",
+              "PON_CREDENTIAL_INVALID",
               "PON_DATABASE_INVALID",
+              "PON_IDEMPOTENCY_CONFLICT",
               "PON_INPUT_INVALID",
               "PON_INTERNAL_ERROR",
+              "PON_KERNEL_ALREADY_BOOTSTRAPPED",
+              "PON_KERNEL_NOT_BOOTSTRAPPED",
               "PON_LEGACY_SCHEMA_UNSUPPORTED",
               "PON_MIGRATION_MISMATCH",
+              "PON_OPERATION_NOT_IMPLEMENTED",
               "PON_OUTPUT_EXISTS",
               "PON_PATH_CONFLICT",
               "PON_PATH_NOT_FOUND",
@@ -383,7 +490,7 @@
   ],
   "title": "hub.status result",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_1",
   "x-invariants": [],
   "x-mutates": false
 }

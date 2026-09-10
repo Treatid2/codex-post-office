@@ -56,5 +56,14 @@ These labels describe engineering gates, not priority severities and not product
   dispatch retirement, and clean journal replay/verification. P2.4 does not authorize production
   cut-over.
 
-The next major gate is P3 non-authoritative shadow validation, followed by a separately authorised
-cut-over. None of P0 through P2.4 authorises dual-write or production cut-over.
+- **P3.1 — isolated operational kernel.** Add the shared contract dispatcher, exact capability and
+  actor authentication, default-deny operation authorization, durable canonical idempotency,
+  immediate write transactions, per-aggregate compare-and-swap primitives, and canonical
+  hash-chained event commits. Route `hub.status` as the first fully operational contract while all
+  catalogue mutations remain unavailable. Kernel instances may be `ISOLATED` or non-authoritative
+  `SHADOW`; no production mode exists. P3.1 is implemented and tested.
+
+The remaining P3 work is to implement the authority, provisioning, message, transport and recovery
+handlers through this kernel, then run non-authoritative shadow validation. A separately authorised
+cut-over follows only after those gates pass. None of P0 through P3.1 authorises dual-write or
+production cut-over.

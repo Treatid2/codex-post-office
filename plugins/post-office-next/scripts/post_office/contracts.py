@@ -179,7 +179,10 @@ def generate_contracts(plugin_root: Path) -> dict[str, Any]:
         "fgpmWishlistOperations": sorted(set(operation_specs) - LOCAL_EXTENSION_OPERATIONS),
         "postOfficeNextExtensions": sorted(LOCAL_EXTENSION_OPERATIONS),
         "implementedInP0P1": ["hub.snapshot", "hub.reconcile.preview"],
-        "contractOnlyUntilLaterSlice": sorted(set(operation_specs) - {"hub.snapshot", "hub.reconcile.preview"}),
+        "implementedInP3_1": ["hub.status"],
+        "contractOnlyUntilLaterSlice": sorted(
+            set(operation_specs) - {"hub.snapshot", "hub.reconcile.preview", "hub.status"}
+        ),
     }, overwrite=True)
     write_json(root / "diagnostics.json", {
         "schemaVersion": "1",

@@ -1,6 +1,6 @@
 {
   "name": "post-office-next",
-  "version": "0.1.0+codex.20260910213351",
+  "version": "0.1.0+codex.20260910230036",
   "description": "Isolated contracts, legacy capture, deterministic migration replay, and recovery tooling for the next Codex Comms control plane.",
   "author": {
     "name": "Treatid2",

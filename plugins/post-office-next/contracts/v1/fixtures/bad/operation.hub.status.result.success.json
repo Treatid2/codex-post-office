@@ -12,5 +12,18 @@
   },
   "requestId": "PON-REQUEST-001",
   "schemaVersion": "1",
+  "status": {
+    "contractRoot": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "databaseUserVersion": 3,
+    "eventCount": 0,
+    "idempotencyRecordCountBeforeRequest": 0,
+    "implementedOperations": [
+      "hub.status"
+    ],
+    "instanceId": "PON-KERNEL",
+    "lastEventId": null,
+    "mode": "ISOLATED",
+    "status": "READY"
+  },
   "warnings": []
 }

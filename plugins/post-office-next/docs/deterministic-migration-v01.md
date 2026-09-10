@@ -20,7 +20,7 @@ inventory. Google Drive is not read and is not a retention target.
 
 The output is a new directory containing:
 
-- `post-office-next.sqlite3`, using schema migrations 0001 and 0002;
+- `post-office-next.sqlite3`, using the complete contiguous migration set (currently 0001–0003);
 - `cas/`, a local content-addressed store for payload and evidence bytes;
 - `cas-manifest.json`, binding each logical input to its CAS object; and
 - `migration-receipt.json`, binding source identity, projection counts, database state, event chain,

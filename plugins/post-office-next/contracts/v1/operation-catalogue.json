@@ -302,7 +302,7 @@
       "catalogueSource": "FGPM_WISHLIST",
       "category": "hub",
       "concurrency": "NONE_READ_ONLY",
-      "contractStatus": "CONTRACT_ONLY",
+      "contractStatus": "IMPLEMENTED_P3_1",
       "idempotency": "REQUEST_ID_AND_CANONICAL_REQUEST_HASH",
       "minimumAuthority": "authenticated-reader",
       "mutates": false,

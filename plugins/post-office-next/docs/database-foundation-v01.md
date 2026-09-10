@@ -54,7 +54,12 @@ legacy-row retention, normalized migration payload/evidence records, conservativ
 projection coverage, and replay receipt structure. The P2.1 importer and event replay are described
 in [`deterministic-migration-v01.md`](deterministic-migration-v01.md).
 
-This schema is a P2 foundation, not a complete Post Office. The operation dispatcher, complete
-mailbox and review workflows, production browser integration, dashboard, shadow validation, and
-separately authorised one-time production migration remain to be implemented and verified before
-switchover.
+Migration `0003_operational_kernel.sql` adds the singleton isolated/shadow kernel identity and an
+operation/idempotency lookup index. P3.1 uses the existing actors, caller capabilities,
+idempotency records and append-only event journal rather than introducing a parallel authority or
+receipt store. See [`operational-kernel-v01.md`](operational-kernel-v01.md).
+
+This schema plus P3.1 provides the isolated dispatcher foundation, not a complete Post Office. The
+complete authority, mailbox, message, transport and review handlers, production browser integration,
+dashboard, shadow validation, and separately authorised one-time production migration remain to be
+implemented and verified before switchover.
