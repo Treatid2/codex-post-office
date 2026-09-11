@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import os
 import secrets
 import sqlite3
 import uuid
@@ -667,6 +668,173 @@ def return_automatic_review(
         event = append_hub_event(con, request=request, capability_id=capability["capability_id"], aggregate_version=3, before_root=_aggregate_root("AutomaticReview", review_id, before), after_root=_aggregate_root("AutomaticReview", review_id, after), event_result={"state": "RETURNED", "wakeDispatchId": dispatch["dispatch_id"]}, occurred_at=now)
         con.commit()
         return {"ok": True, "reviewId": review_id, "state": "RETURNED", "resultMessageId": result_message_id, "wakeDispatchId": dispatch["dispatch_id"], "eventId": event["eventId"], "heartbeatRequired": False}
+    except Exception:
+        if con.in_transaction:
+            con.rollback()
+        raise
+    finally:
+        con.close()
+
+
+def ingest_automatic_review_result(
+    database_path: Path, credential_path: Path, plugin_root: Path, *, review_id: str,
+    result_path: Path, source_thread_id: str, source_message_id: str,
+    activation_dispatch_id: str, verdict: str,
+) -> dict[str, Any]:
+    """Import one exact browser review result and materialize its requester wake atomically."""
+    if verdict not in {"PASS", "PASS_WITH_FINDINGS", "CHANGES_REQUIRED", "BLOCKED_BY_EVIDENCE"}:
+        raise PostOfficeError("PON_INPUT_INVALID", "Automatic-review verdict is unsupported", {})
+    if result_path.is_symlink():
+        raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Review result must be an unlinked regular file", {})
+    result_path = result_path.resolve(strict=True)
+    if not result_path.is_file():
+        raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Review result must be an unlinked regular file", {})
+    data = result_path.read_bytes()
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise PostOfficeError("PON_INPUT_INVALID", "Review result is not exact UTF-8", {}) from exc
+    if not text.startswith("REVIEW RESULT"):
+        raise PostOfficeError("PON_INPUT_INVALID", "Review result does not begin with REVIEW RESULT", {})
+    required = (
+        f"Review ID: {review_id}",
+        f"Activation Dispatch ID: {activation_dispatch_id}",
+        f"Verdict: {verdict}",
+    )
+    if any(marker not in text for marker in required):
+        raise PostOfficeError("PON_OBSERVATION_MISMATCH", "Review result correlation text is incomplete", {})
+    content_sha256 = sha256_bytes(data)
+    suffix = sha256_bytes((review_id + source_message_id + content_sha256).encode("utf-8"))[:24]
+    result_message_id = "PON-MESSAGE-REVIEW-RESULT-" + suffix
+    bundle_id = "PON-BUNDLE-REVIEW-RESULT-" + suffix
+    attempt_id = "PON-TRANSPORT-REVIEW-RESULT-" + suffix
+    dispatch_id = "PON-DISPATCH-REVIEW-RETURN-" + suffix
+    con = _open_writer(database_path, plugin_root)
+    try:
+        capability, actor = _courier(con, credential_path)
+        review = con.execute("SELECT * FROM automatic_reviews WHERE review_id=?", (review_id,)).fetchone()
+        if not review or review["state"] not in {"ACTIVE", "RETURNED"}:
+            raise PostOfficeError("PON_CONCURRENCY_CONFLICT", "Review is not active or already returned", {})
+        if review["reviewer_thread_id"] != source_thread_id:
+            raise PostOfficeError("PON_OBSERVATION_MISMATCH", "Review result source thread differs from its reviewer binding", {})
+        retained = con.execute("SELECT * FROM semantic_messages WHERE message_id=?", (result_message_id,)).fetchone()
+        if retained:
+            if review["result_message_id"] != result_message_id or review["wake_dispatch_id"] != dispatch_id:
+                raise PostOfficeError("PON_CONCURRENCY_CONFLICT", "Retained review-result identity is inconsistent", {})
+            con.rollback()
+            return {"ok": True, "created": False, "reviewId": review_id,
+                    "resultMessageId": result_message_id, "wakeDispatchId": dispatch_id,
+                    "resultSha256": content_sha256, "resultSizeBytes": len(data)}
+        request_message = con.execute(
+            "SELECT * FROM semantic_messages WHERE message_id=?", (review["semantic_message_id"],)
+        ).fetchone()
+        binding = con.execute(
+            "SELECT * FROM task_endpoint_bindings WHERE task_id=?", (review["requester_task_id"],)
+        ).fetchone()
+        mailbox = con.execute(
+            "SELECT * FROM mailboxes WHERE mailbox_id=? AND generation=? AND status='ACTIVE'",
+            (binding["mailbox_id"], binding["mailbox_generation"]),
+        ).fetchone() if binding else None
+        endpoint = con.execute(
+            "SELECT * FROM endpoints WHERE endpoint_id=? AND status='ACTIVE'", (binding["endpoint_id"],)
+        ).fetchone() if binding else None
+        if not request_message or not mailbox or not endpoint:
+            raise PostOfficeError("PON_INPUT_INVALID", "Requester mailbox binding is unavailable", {})
+        relative = f"objects/{content_sha256[:2]}/{content_sha256}"
+        target = database_path.parent / Path(relative)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            if sha256_bytes(target.read_bytes()) != content_sha256:
+                raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Retained CAS object differs from its digest", {})
+        else:
+            temporary = target.with_name(target.name + "." + uuid.uuid4().hex + ".tmp")
+            temporary.write_bytes(data)
+            if sha256_bytes(temporary.read_bytes()) != content_sha256:
+                temporary.unlink(missing_ok=True)
+                raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Review result CAS verification failed", {})
+            os.replace(temporary, target)
+        now = _timestamp()
+        storage_id = "PON-STORAGE-" + content_sha256[:40]
+        con.execute(
+            "INSERT OR IGNORE INTO storage_copies VALUES(?,?,?,?,?,?,?,?)",
+            (storage_id, content_sha256, "LOCAL_CAS", relative, len(data), "AUTHORITATIVE", "SHA256_READBACK", now),
+        )
+        result_content = {
+            "reviewId": review_id, "activationDispatchId": activation_dispatch_id,
+            "sourceThreadId": source_thread_id, "sourceMessageId": source_message_id,
+            "verdict": verdict, "sha256": content_sha256, "sizeBytes": len(data),
+        }
+        authority_grant_id = request_message["authority_grant_id"]
+        exact_author_action_id = None if authority_grant_id else request_message["exact_author_action_id"]
+        con.execute(
+            """INSERT INTO semantic_messages(message_id,project_id,mail_domain,message_type,sender_endpoint_id,
+               recipient_mailbox_id,recipient_generation,semantic_cycle_id,authority_grant_id,exact_author_action_id,
+               requested_action,completion_criteria,content_root,state,aggregate_version,aggregate_root,created_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'CUSTODY_RECORDED',1,?,?)""",
+            (result_message_id, request_message["project_id"], mailbox["mail_domain"], "RESPONSE",
+             review["reviewer_endpoint_id"], mailbox["mailbox_id"], int(mailbox["generation"]),
+             request_message["semantic_cycle_id"], authority_grant_id, exact_author_action_id,
+             "Evaluate the retained automatic-review result", "Record evaluation and continue only under existing authority",
+             sha256_json(result_content), "0" * 64, now),
+        )
+        con.execute("INSERT INTO message_relations VALUES(?,?,?)", (result_message_id, review["semantic_message_id"], "RESPONSE_TO"))
+        manifest_root = sha256_json([{"ordinal": 0, "sha256": content_sha256, "sizeBytes": len(data)}])
+        con.execute(
+            "INSERT INTO message_bundles VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (bundle_id, result_message_id, result_path.name, 1, len(data), content_sha256,
+             manifest_root, "REGISTERED", None, now),
+        )
+        con.execute("INSERT INTO bundle_payloads VALUES(?,?,?,?,?)", (bundle_id, 0, "payloads/0000-" + content_sha256, len(data), content_sha256))
+        con.execute(
+            "INSERT INTO transport_attempts VALUES(?,?,?,?,?,'PENDING',1,NULL,?,?)",
+            (attempt_id, result_message_id, bundle_id, review["reviewer_endpoint_id"], mailbox["mailbox_id"], now, now),
+        )
+        marker = f"POST OFFICE DELIVERY {dispatch_id} {result_message_id}"
+        con.execute(
+            """INSERT INTO transport_dispatches(dispatch_id,transport_attempt_id,channel,destination_endpoint_id,
+               destination_mailbox_id,destination_generation,state,observable_marker,attempt_count,next_attempt_at,
+               created_at,updated_at) VALUES(?,?,?,?,?,?,'READY',?,0,?,?,?)""",
+            (dispatch_id, attempt_id, "NATIVE_TASK", endpoint["endpoint_id"], mailbox["mailbox_id"],
+             int(mailbox["generation"]), marker, now, now, now),
+        )
+        result_row = con.execute("SELECT * FROM semantic_messages WHERE message_id=?", (result_message_id,)).fetchone()
+        after_message_root = _aggregate_root("SemanticMessage", result_message_id, _message_state(con, result_row))
+        con.execute("UPDATE semantic_messages SET aggregate_root=? WHERE message_id=?", (after_message_root, result_message_id))
+        message_request = _runtime_request(
+            actor=actor, capability=capability, message=request_message,
+            operation="runtime.review.result.ingest", aggregate_type="SemanticMessage",
+            aggregate_id=result_message_id, parameters=result_content,
+        )
+        message_event = append_hub_event(
+            con, request=message_request, capability_id=capability["capability_id"], aggregate_version=1,
+            before_root=_aggregate_root("SemanticMessage", result_message_id, None), after_root=after_message_root,
+            event_result={"state": "CUSTODY_RECORDED", "bundleId": bundle_id, "wakeDispatchId": dispatch_id},
+            occurred_at=now,
+        )
+        con.execute("UPDATE semantic_messages SET registered_event_id=? WHERE message_id=?", (message_event["eventId"], result_message_id))
+        before_review = _review_state(review)
+        con.execute(
+            "UPDATE automatic_reviews SET state='RETURNED',returned_at=?,result_message_id=?,wake_dispatch_id=? WHERE review_id=?",
+            (now, result_message_id, dispatch_id, review_id),
+        )
+        after_review_row = con.execute("SELECT * FROM automatic_reviews WHERE review_id=?", (review_id,)).fetchone()
+        review_request = _runtime_request(
+            actor=actor, capability=capability, message=request_message,
+            operation="runtime.review.return", aggregate_type="AutomaticReview", aggregate_id=review_id,
+            parameters={"resultMessageId": result_message_id, "wakeDispatchId": dispatch_id},
+        )
+        review_event = append_hub_event(
+            con, request=review_request, capability_id=capability["capability_id"], aggregate_version=3,
+            before_root=_aggregate_root("AutomaticReview", review_id, before_review),
+            after_root=_aggregate_root("AutomaticReview", review_id, _review_state(after_review_row)),
+            event_result={"state": "RETURNED", "wakeDispatchId": dispatch_id}, occurred_at=now,
+        )
+        con.commit()
+        return {"ok": True, "created": True, "reviewId": review_id,
+                "resultMessageId": result_message_id, "bundleId": bundle_id,
+                "wakeDispatchId": dispatch_id, "resultSha256": content_sha256,
+                "resultSizeBytes": len(data), "messageEventId": message_event["eventId"],
+                "reviewEventId": review_event["eventId"], "heartbeatRequired": False}
     except Exception:
         if con.in_transaction:
             con.rollback()

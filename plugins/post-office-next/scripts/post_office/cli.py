@@ -29,6 +29,7 @@ from .runtime import (
     complete_continuation,
     complete_transport,
     ensure_automatic_review,
+    ingest_automatic_review_result,
     reconcile_transport,
     record_recovered_transport_receipt,
     reconcile_continuations,
@@ -143,7 +144,7 @@ def _parser() -> argparse.ArgumentParser:
     runtime.add_argument("--bundle-id")
     runtime.add_argument("--channel", choices=["NATIVE_TASK", "PLAYWRIGHT_BROWSER"])
     reviews = sub.add_parser("reviews")
-    reviews.add_argument("action", choices=["ensure", "claim", "return", "status", "complete", "withdraw"])
+    reviews.add_argument("action", choices=["ensure", "claim", "ingest-result", "return", "status", "complete", "withdraw"])
     reviews.add_argument("--path", required=True)
     reviews.add_argument("--credential", required=True)
     reviews.add_argument("--review-id")
@@ -153,6 +154,11 @@ def _parser() -> argparse.ArgumentParser:
     reviews.add_argument("--package-sha256")
     reviews.add_argument("--minimum-interval-minutes", type=int, default=30)
     reviews.add_argument("--result-message-id")
+    reviews.add_argument("--result-path")
+    reviews.add_argument("--source-thread-id")
+    reviews.add_argument("--source-message-id")
+    reviews.add_argument("--activation-dispatch-id")
+    reviews.add_argument("--verdict")
     reviews.add_argument("--reason")
     reviews.add_argument("--summary")
     continuation = sub.add_parser("continuation")
@@ -375,6 +381,20 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
             return claim_next_review(
                 Path(args.path), Path(args.credential), plugin_root,
                 reviewer_endpoint_id=args.reviewer_endpoint_id,
+            )
+        if args.action == "ingest-result":
+            if not all((args.review_id, args.result_path, args.source_thread_id, args.source_message_id,
+                        args.activation_dispatch_id, args.verdict)):
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "reviews ingest-result requires --review-id, --result-path, --source-thread-id, "
+                    "--source-message-id, --activation-dispatch-id and --verdict",
+                )
+            return ingest_automatic_review_result(
+                Path(args.path), Path(args.credential), plugin_root,
+                review_id=args.review_id, result_path=Path(args.result_path),
+                source_thread_id=args.source_thread_id, source_message_id=args.source_message_id,
+                activation_dispatch_id=args.activation_dispatch_id, verdict=args.verdict,
             )
         if not args.review_id:
             raise PostOfficeError("PON_INPUT_INVALID", f"reviews {args.action} requires --review-id")
