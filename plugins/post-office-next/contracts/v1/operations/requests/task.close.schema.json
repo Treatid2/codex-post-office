@@ -195,7 +195,7 @@
   ],
   "title": "task.close request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_3",
   "x-minimumAuthority": "browser-or-author",
   "x-mutates": true
 }

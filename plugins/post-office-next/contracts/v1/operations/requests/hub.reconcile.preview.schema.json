@@ -9,7 +9,13 @@
         "kind": "HUMAN",
         "role": "browser-or-courier"
       },
+      "aggregate": {
+        "expectedVersion": 0,
+        "id": "PON-AGGREGATE-001",
+        "type": "Example"
+      },
       "authority": {
+        "authorityGrantId": "PON-GRANT-001",
         "capabilityId": "PON-CAPABILITY-001"
       },
       "operation": "hub.reconcile.preview",
@@ -52,29 +58,99 @@
       ],
       "type": "object"
     },
-    "authority": {
+    "aggregate": {
       "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "expectedVersion"
+          ]
+        },
+        {
+          "required": [
+            "expectedRoot"
+          ]
+        }
+      ],
       "properties": {
-        "authorityGrantId": {
+        "expectedRoot": {
+          "minLength": 1,
+          "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "expectedVersion": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "id": {
           "minLength": 1,
           "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
           "type": "string"
         },
-        "capabilityId": {
+        "type": {
           "minLength": 1,
-          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
-          "type": "string"
-        },
-        "exactAuthorActionId": {
-          "minLength": 1,
-          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
           "type": "string"
         }
       },
       "required": [
-        "capabilityId"
+        "type",
+        "id"
       ],
       "type": "object"
+    },
+    "authority": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "authorityGrantId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "capabilityId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "exactAuthorActionId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "capabilityId",
+            "authorityGrantId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "authorityGrantId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "capabilityId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "exactAuthorActionId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "capabilityId",
+            "exactAuthorActionId"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "operation": {
       "const": "hub.reconcile.preview"
@@ -117,11 +193,12 @@
     "requestId",
     "actor",
     "authority",
-    "parameters"
+    "parameters",
+    "aggregate"
   ],
   "title": "hub.reconcile.preview request",
   "type": "object",
-  "x-contractStatus": "IMPLEMENTED_P0_P1",
+  "x-contractStatus": "IMPLEMENTED_P3_6",
   "x-minimumAuthority": "browser-or-courier",
-  "x-mutates": false
+  "x-mutates": true
 }

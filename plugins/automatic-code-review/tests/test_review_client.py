@@ -57,6 +57,7 @@ class ReviewClientTests(unittest.TestCase):
             backend=backend,
             backend_files={backend.name: "0" * 64, "codex_comms.py": "1" * 64},
             state_root=state_root or backend.parent,
+            state_database="post-office-next.sqlite3",
             lock_path=backend.parent / "runtime-lock.json",
             lock_sha256="2" * 64,
         )
@@ -324,6 +325,18 @@ class ReviewClientTests(unittest.TestCase):
                 code = client.main(["--backend", str(backend), "access"])
             self.assertEqual(code, 2)
             self.assertEqual(json.loads(stderr.getvalue())["diagnostic"]["code"], "REVIEW_ARGUMENT_INVALID")
+
+    def test_backend_path_uses_locked_vnext_database(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            backend = root / "auto_review.py"
+            backend.write_text("# backend\n", encoding="utf-8")
+            (root / "post-office-next.sqlite3").write_bytes(b"vnext")
+            deployment = self._deployment(backend, root)
+            with patch.object(client, "load_deployment", return_value=deployment), patch.object(
+                client, "_attest_files", return_value={}
+            ):
+                self.assertEqual(client.backend_path(), backend)
 
     def test_invalid_arguments_are_one_json_diagnostic(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

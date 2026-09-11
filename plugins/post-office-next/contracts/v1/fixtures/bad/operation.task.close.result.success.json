@@ -14,5 +14,16 @@
   },
   "requestId": "PON-REQUEST-001",
   "schemaVersion": "1",
+  "task": {
+    "acceptanceContractRoot": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "authorityGrantId": "PON-GRANT-001",
+    "endpointBinding": null,
+    "id": "PON-TASK-001",
+    "mutablePackageId": null,
+    "objective": "Example objective",
+    "projectId": "PON-PROJECT-001",
+    "state": "ACTIVE",
+    "taskKind": "PROJECT_MANAGEMENT"
+  },
   "warnings": []
 }

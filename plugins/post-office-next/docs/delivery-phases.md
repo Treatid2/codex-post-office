@@ -8,7 +8,7 @@ These labels describe engineering gates, not priority severities and not product
 - **P0.1 — P0 hardening and independent-review remediation.** Correct defects found while proving
   P0's contracts and isolation boundaries. The current P0.1 increment covers path topology,
   read-only database identity preflight, exact migration/schema identity, coherent diagnostics and
-  result polarity, Draft-07 parity, capture-root verification, cycle-mapping non-inference, and
+  result polarity, JSON Schema Draft-07 parity, capture-root verification, cycle-mapping non-inference, and
   local-storage/bridge binding. It also requires production-root exclusion at every write entry,
   content-complete database identities, database-aware capture consistency, strict local-evidence
   custody, and rejection of links in capture/source boundaries. P0.1 does not add production
@@ -63,7 +63,44 @@ These labels describe engineering gates, not priority severities and not product
   catalogue mutations remain unavailable. Kernel instances may be `ISOLATED` or non-authoritative
   `SHADOW`; no production mode exists. P3.1 is implemented and tested.
 
-The remaining P3 work is to implement the authority, provisioning, message, transport and recovery
-handlers through this kernel, then run non-authoritative shadow validation. A separately authorised
-cut-over follows only after those gates pass. None of P0 through P3.1 authorises dual-write or
-production cut-over.
+- **P3.2 — isolated authority and mailbox-provisioning kernel.** Route `authority.inspect`,
+  `authority.grant`, `authority.revoke`, `endpoint.allocate`, `endpoint.revoke`,
+  `mailbox.allocate`, and `mailbox.rotateGeneration` through the P3.1 dispatcher. Exact human
+  author actions are authenticated, durably recorded, and consumed once; delegated grants are
+  scope-checked and bounded uses are consumed through their own chained events. Endpoint and
+  mailbox identities are caller-selected aggregate IDs protected by version/root compare-and-swap.
+  Mailbox rotation retires the previous generation atomically, and endpoint revocation records
+  child mailbox-revocation events before the endpoint event. P3.2 is implemented and tested only
+  in `ISOLATED` or non-authoritative `SHADOW` mode. It does not provision additional caller-secret
+  bindings, create projects or tasks, route messages, invoke browsers, or authorize cut-over.
+
+- **P3.3 — secure project and task provisioning.** Add controlled caller-credential binding,
+  durable project/task provisioning plans, project lifecycle, task lifecycle, endpoint binding and
+  provisioning inspection through the authenticated dispatcher. This gate is implemented and
+  tested in isolated/shadow mode. It mutates only catalogue state; it does not create external Codex
+  tasks or filesystem projects. See [`secure-provisioning-kernel-v01.md`](secure-provisioning-kernel-v01.md).
+
+- **P3.4 — semantic mail and package workflow.** Route package, interface, semantic-cycle, message,
+  bundle, capability-request, change-set, context and integration operations through the shared
+  kernel. Require verified local custody and exact destination generations, and keep delivery,
+  acknowledgement, review, acceptance and closure separate. This gate is implemented and tested in
+  isolated/shadow mode; routing stops at retained transport intent. See
+  [`semantic-workflow-kernel-v01.md`](semantic-workflow-kernel-v01.md).
+
+- **P3.5 — transport, review and recovery runtime.** Add local-CAS transport, bounded Playwright and
+  native-task adapters, leases and automatic recovery, attention projection, and automatic-review
+  FIFO/return wakes. This gate is implemented with short internal leases, exact-evidence recovery,
+  atomic review ensure/withdraw and return-triggered wakes. Successful normal paths do not use
+  Drive; exceptional fallback remains explicit, measured and transient. See
+  [`transport-review-runtime-v01.md`](transport-review-runtime-v01.md).
+
+- **P3.6 — non-authoritative shadow validation and cutover readiness.** Compare vNext decisions with
+  a bounded legacy event feed, resolve or accept every anomaly, prove restore/replay/performance and
+  credential continuity, and emit an immutable cutover dossier. P3.6 adds a fail-closed cutover
+  preflight and guarded authority-transfer mechanism. It is implemented and tested; activation
+  still requires a clean real-world rehearsal, an exact dossier root and an explicit author action.
+  See [`shadow-cutover-v01.md`](shadow-cutover-v01.md).
+
+The complete gates and exit criteria are defined in
+[`production-roadmap-v01.md`](production-roadmap-v01.md). A separately authorised one-time cut-over
+follows only after P3.6 passes. None of P0 through P3.6 authorises dual-write.

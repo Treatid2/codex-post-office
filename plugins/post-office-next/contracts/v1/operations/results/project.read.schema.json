@@ -10,6 +10,19 @@
       "createdIds": [],
       "ok": true,
       "operation": "project.read",
+      "project": {
+        "code": "DEMO",
+        "displayName": "Demo",
+        "id": "PON-PROJECT-001",
+        "kind": "LOCAL",
+        "localBackupRoot": "L:/Codex/backups/demo",
+        "localCasRoot": "L:/Codex/cas/demo",
+        "localProjectRoot": "L:/Codex/projects/demo",
+        "mailDomains": [
+          "DEMO"
+        ],
+        "status": "ACTIVE"
+      },
       "receipt": {
         "receiptId": "PON-RECEIPT-001",
         "recordedAt": "2026-09-04T12:00:00Z",
@@ -58,7 +71,8 @@
         "afterRoot",
         "createdIds",
         "warnings",
-        "receipt"
+        "receipt",
+        "project"
       ],
       "type": "object"
     },
@@ -110,6 +124,7 @@
                 "PON_CONTRACT_FIXTURE_UNEXPECTED",
                 "PON_CONTRACT_INVALID",
                 "PON_CREDENTIAL_INVALID",
+                "PON_CUSTODY_NOT_VERIFIED",
                 "PON_DATABASE_INVALID",
                 "PON_IDEMPOTENCY_CONFLICT",
                 "PON_INPUT_INVALID",
@@ -118,11 +133,13 @@
                 "PON_KERNEL_NOT_BOOTSTRAPPED",
                 "PON_LEGACY_SCHEMA_UNSUPPORTED",
                 "PON_MIGRATION_MISMATCH",
+                "PON_OBSERVATION_MISMATCH",
                 "PON_OPERATION_NOT_IMPLEMENTED",
                 "PON_OUTPUT_EXISTS",
                 "PON_PATH_CONFLICT",
                 "PON_PATH_NOT_FOUND",
                 "PON_PRODUCTION_MUTATION_FORBIDDEN",
+                "PON_RATE_LIMITED",
                 "PON_RECONCILIATION_AMBIGUOUS",
                 "PON_RECONCILIATION_DUPLICATE",
                 "PON_RECONCILIATION_HASH_MISMATCH",
@@ -213,6 +230,7 @@
             "PON_CONTRACT_FIXTURE_UNEXPECTED",
             "PON_CONTRACT_INVALID",
             "PON_CREDENTIAL_INVALID",
+            "PON_CUSTODY_NOT_VERIFIED",
             "PON_DATABASE_INVALID",
             "PON_IDEMPOTENCY_CONFLICT",
             "PON_INPUT_INVALID",
@@ -221,11 +239,13 @@
             "PON_KERNEL_NOT_BOOTSTRAPPED",
             "PON_LEGACY_SCHEMA_UNSUPPORTED",
             "PON_MIGRATION_MISMATCH",
+            "PON_OBSERVATION_MISMATCH",
             "PON_OPERATION_NOT_IMPLEMENTED",
             "PON_OUTPUT_EXISTS",
             "PON_PATH_CONFLICT",
             "PON_PATH_NOT_FOUND",
             "PON_PRODUCTION_MUTATION_FORBIDDEN",
+            "PON_RATE_LIMITED",
             "PON_RECONCILIATION_AMBIGUOUS",
             "PON_RECONCILIATION_DUPLICATE",
             "PON_RECONCILIATION_HASH_MISMATCH",
@@ -280,6 +300,79 @@
     },
     "operation": {
       "const": "project.read"
+    },
+    "project": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "displayName": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "kind": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "localBackupRoot": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "localCasRoot": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "localProjectRoot": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "mailDomains": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "policyRoot": {
+          "minLength": 1,
+          "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "PROPOSED",
+            "PROVISIONING",
+            "ACTIVE",
+            "PAUSED",
+            "PROVISIONING_FAILED",
+            "ARCHIVED"
+          ],
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "code",
+        "displayName",
+        "kind",
+        "status",
+        "localProjectRoot",
+        "localCasRoot",
+        "localBackupRoot",
+        "mailDomains"
+      ],
+      "type": "object"
     },
     "receipt": {
       "additionalProperties": false,
@@ -338,6 +431,7 @@
               "PON_CONTRACT_FIXTURE_UNEXPECTED",
               "PON_CONTRACT_INVALID",
               "PON_CREDENTIAL_INVALID",
+              "PON_CUSTODY_NOT_VERIFIED",
               "PON_DATABASE_INVALID",
               "PON_IDEMPOTENCY_CONFLICT",
               "PON_INPUT_INVALID",
@@ -346,11 +440,13 @@
               "PON_KERNEL_NOT_BOOTSTRAPPED",
               "PON_LEGACY_SCHEMA_UNSUPPORTED",
               "PON_MIGRATION_MISMATCH",
+              "PON_OBSERVATION_MISMATCH",
               "PON_OPERATION_NOT_IMPLEMENTED",
               "PON_OUTPUT_EXISTS",
               "PON_PATH_CONFLICT",
               "PON_PATH_NOT_FOUND",
               "PON_PRODUCTION_MUTATION_FORBIDDEN",
+              "PON_RATE_LIMITED",
               "PON_RECONCILIATION_AMBIGUOUS",
               "PON_RECONCILIATION_DUPLICATE",
               "PON_RECONCILIATION_HASH_MISMATCH",
@@ -407,7 +503,7 @@
   ],
   "title": "project.read result",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_3",
   "x-invariants": [],
   "x-mutates": false
 }

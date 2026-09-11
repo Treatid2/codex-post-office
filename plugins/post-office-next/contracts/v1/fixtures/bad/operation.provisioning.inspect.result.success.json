@@ -5,6 +5,18 @@
   "createdIds": [],
   "ok": true,
   "operation": "provisioning.inspect",
+  "provisioningPlan": {
+    "aggregateId": "PON-PROJECT-001",
+    "aggregateType": "Project",
+    "authorityId": "PON-GRANT-001",
+    "id": "PON-PLAN-001",
+    "payload": {},
+    "planRoot": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "requestedResources": [
+      "project:PON-PROJECT-001"
+    ],
+    "stage": "PLAN"
+  },
   "receipt": {
     "receiptId": "PON-RECEIPT-001",
     "recordedAt": "2026-09-04T12:00:00Z",

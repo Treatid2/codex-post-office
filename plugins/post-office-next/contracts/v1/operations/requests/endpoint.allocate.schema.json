@@ -208,6 +208,16 @@
           "required": [],
           "type": "object"
         },
+        "actorKind": {
+          "enum": [
+            "BROWSER",
+            "COURIER",
+            "ENDPOINT",
+            "SYSTEM"
+          ],
+          "minLength": 1,
+          "type": "string"
+        },
         "projectId": {
           "minLength": 1,
           "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
@@ -250,7 +260,7 @@
   ],
   "title": "endpoint.allocate request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_2",
   "x-minimumAuthority": "author-or-delegated-browser",
   "x-mutates": true
 }

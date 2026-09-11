@@ -10,6 +10,18 @@
       "createdIds": [],
       "ok": true,
       "operation": "provisioning.inspect",
+      "provisioningPlan": {
+        "aggregateId": "PON-PROJECT-001",
+        "aggregateType": "Project",
+        "authorityId": "PON-GRANT-001",
+        "id": "PON-PLAN-001",
+        "payload": {},
+        "planRoot": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "requestedResources": [
+          "project:PON-PROJECT-001"
+        ],
+        "stage": "PLAN"
+      },
       "receipt": {
         "receiptId": "PON-RECEIPT-001",
         "recordedAt": "2026-09-04T12:00:00Z",
@@ -58,7 +70,8 @@
         "afterRoot",
         "createdIds",
         "warnings",
-        "receipt"
+        "receipt",
+        "provisioningPlan"
       ],
       "type": "object"
     },
@@ -110,6 +123,7 @@
                 "PON_CONTRACT_FIXTURE_UNEXPECTED",
                 "PON_CONTRACT_INVALID",
                 "PON_CREDENTIAL_INVALID",
+                "PON_CUSTODY_NOT_VERIFIED",
                 "PON_DATABASE_INVALID",
                 "PON_IDEMPOTENCY_CONFLICT",
                 "PON_INPUT_INVALID",
@@ -118,11 +132,13 @@
                 "PON_KERNEL_NOT_BOOTSTRAPPED",
                 "PON_LEGACY_SCHEMA_UNSUPPORTED",
                 "PON_MIGRATION_MISMATCH",
+                "PON_OBSERVATION_MISMATCH",
                 "PON_OPERATION_NOT_IMPLEMENTED",
                 "PON_OUTPUT_EXISTS",
                 "PON_PATH_CONFLICT",
                 "PON_PATH_NOT_FOUND",
                 "PON_PRODUCTION_MUTATION_FORBIDDEN",
+                "PON_RATE_LIMITED",
                 "PON_RECONCILIATION_AMBIGUOUS",
                 "PON_RECONCILIATION_DUPLICATE",
                 "PON_RECONCILIATION_HASH_MISMATCH",
@@ -213,6 +229,7 @@
             "PON_CONTRACT_FIXTURE_UNEXPECTED",
             "PON_CONTRACT_INVALID",
             "PON_CREDENTIAL_INVALID",
+            "PON_CUSTODY_NOT_VERIFIED",
             "PON_DATABASE_INVALID",
             "PON_IDEMPOTENCY_CONFLICT",
             "PON_INPUT_INVALID",
@@ -221,11 +238,13 @@
             "PON_KERNEL_NOT_BOOTSTRAPPED",
             "PON_LEGACY_SCHEMA_UNSUPPORTED",
             "PON_MIGRATION_MISMATCH",
+            "PON_OBSERVATION_MISMATCH",
             "PON_OPERATION_NOT_IMPLEMENTED",
             "PON_OUTPUT_EXISTS",
             "PON_PATH_CONFLICT",
             "PON_PATH_NOT_FOUND",
             "PON_PRODUCTION_MUTATION_FORBIDDEN",
+            "PON_RATE_LIMITED",
             "PON_RECONCILIATION_AMBIGUOUS",
             "PON_RECONCILIATION_DUPLICATE",
             "PON_RECONCILIATION_HASH_MISMATCH",
@@ -280,6 +299,80 @@
     },
     "operation": {
       "const": "provisioning.inspect"
+    },
+    "provisioningPlan": {
+      "additionalProperties": false,
+      "properties": {
+        "aggregateId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "aggregateType": {
+          "enum": [
+            "Project",
+            "Task"
+          ],
+          "minLength": 1,
+          "type": "string"
+        },
+        "authorityId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "planRoot": {
+          "minLength": 1,
+          "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "requestedResources": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 0,
+          "type": "array"
+        },
+        "stage": {
+          "enum": [
+            "PLAN",
+            "AUTHORISED",
+            "IDS_RESERVED",
+            "EXTERNAL_PENDING",
+            "VERIFIED",
+            "COMMITTED",
+            "READY",
+            "COMPENSATING",
+            "ROLLED_BACK",
+            "ORPHANED_REVIEW"
+          ],
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "aggregateType",
+        "aggregateId",
+        "authorityId",
+        "requestedResources",
+        "planRoot",
+        "stage",
+        "payload"
+      ],
+      "type": "object"
     },
     "receipt": {
       "additionalProperties": false,
@@ -338,6 +431,7 @@
               "PON_CONTRACT_FIXTURE_UNEXPECTED",
               "PON_CONTRACT_INVALID",
               "PON_CREDENTIAL_INVALID",
+              "PON_CUSTODY_NOT_VERIFIED",
               "PON_DATABASE_INVALID",
               "PON_IDEMPOTENCY_CONFLICT",
               "PON_INPUT_INVALID",
@@ -346,11 +440,13 @@
               "PON_KERNEL_NOT_BOOTSTRAPPED",
               "PON_LEGACY_SCHEMA_UNSUPPORTED",
               "PON_MIGRATION_MISMATCH",
+              "PON_OBSERVATION_MISMATCH",
               "PON_OPERATION_NOT_IMPLEMENTED",
               "PON_OUTPUT_EXISTS",
               "PON_PATH_CONFLICT",
               "PON_PATH_NOT_FOUND",
               "PON_PRODUCTION_MUTATION_FORBIDDEN",
+              "PON_RATE_LIMITED",
               "PON_RECONCILIATION_AMBIGUOUS",
               "PON_RECONCILIATION_DUPLICATE",
               "PON_RECONCILIATION_HASH_MISMATCH",
@@ -407,7 +503,7 @@
   ],
   "title": "provisioning.inspect result",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_3",
   "x-invariants": [],
   "x-mutates": false
 }

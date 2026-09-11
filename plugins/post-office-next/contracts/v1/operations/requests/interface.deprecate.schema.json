@@ -206,7 +206,7 @@
   ],
   "title": "interface.deprecate request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_4",
   "x-minimumAuthority": "interface-steward-or-browser",
   "x-mutates": true
 }

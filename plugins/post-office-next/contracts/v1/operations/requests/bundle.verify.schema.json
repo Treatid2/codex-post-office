@@ -17,6 +17,7 @@
         "bundle": {
           "bundleVersion": 1,
           "canonicalFilename": "example",
+          "id": "PON-EXAMPLE-001",
           "manifestRoot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "payloads": [
             {
@@ -108,6 +109,11 @@
               "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$",
               "type": "string"
             },
+            "id": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
             "manifestRoot": {
               "minLength": 1,
               "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
@@ -158,6 +164,7 @@
             }
           },
           "required": [
+            "id",
             "semanticMessageId",
             "canonicalFilename",
             "bundleVersion",
@@ -193,7 +200,7 @@
   ],
   "title": "bundle.verify request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_4",
   "x-minimumAuthority": "courier-or-browser",
   "x-mutates": false
 }

@@ -1,26 +1,28 @@
 ---
 name: post-office-next
-description: "Inspect and exercise the isolated Post Office Next development preview: validate contracts, capture legacy state read-only, build reconciliation evidence, initialize an isolated vNext database, perform deterministic import/replay/restore rehearsals, or exercise the P3.1 operational kernel. Do not use it for production mail delivery, browser control, automatic review, or cutover."
+description: "Operate Post Office Next evidence capture, deterministic migration, authenticated P3 workflows, production preparation, shadow validation, and an explicitly authorised one-time cutover. Do not use it for raw browser control or to infer authority to send, accept, close, or cut over."
 ---
 
 # Post Office Next
 
-Use this skill only for the isolated control-plane preview in this plugin. The current plugin
-implements contracts, read-only legacy capture, snapshots, reconciliation previews, performance
-baselines, the vNext database foundation, isolated deterministic import/replay/restore, and the P3.1
-authenticated operational kernel. It does not implement production routing, mailbox mutation,
-reviewer orchestration, production migration, or switchover.
+Use this skill for the Post Office Next local control plane. It implements contracts, read-only
+legacy capture, deterministic import/replay/restore, the complete authenticated P3 semantic and
+transport runtime, production-root preparation, shadow evidence, and guarded one-time authority
+transfer. Browser interaction remains the responsibility of the separate Playwright bridge, and
+automatic review remains a separate least-authority companion.
 
 ## Safety boundary
 
 - Invoke operations through `scripts/Invoke-PostOfficeNext.ps1`.
-- Keep source state read-only and write every capture, snapshot, report, and vNext database to a
-  new disjoint path.
-- Never point a write command at the current Post Office state, its parent, or an alias of either.
+- Keep source state read-only and write every capture, snapshot, report, rehearsal, and prepared
+  vNext root to a new disjoint path until the exact cutover transaction.
+- Never point capture, migration, restore, or preparation at the current Post Office state, its
+  parent, or an alias of either.
 - `POST_OFFICE_PROTECTED_ROOTS` may add operator-defined protected roots using the platform path
   separator. Do not remove a protected root to make a command succeed.
 - Do not treat Google Drive as storage, authority, backup, or migration evidence.
-- Do not infer permission to cut over, repair production state, close a cycle, or send mail.
+- Do not infer permission to cut over, repair production state, close a cycle, or send mail. A
+  cutover requires an explicit author request plus the exact ready dossier named by preflight.
 
 ## Supported work
 
@@ -37,15 +39,17 @@ use `migration replay` only against a verified isolated import root. Use `databa
 `database inspect`, `database backup`, and `database restore` only against isolated vNext databases
 and new destinations. Read `docs/deterministic-migration-v01.md` before a P2.1 rehearsal.
 
-Use `kernel credential-create`, `kernel bootstrap`, `kernel inspect`, and `kernel execute` only with
-an exact isolated vNext database and a credential path outside source control. P3.1 implements only
-the `hub.status` operation; every catalogue mutation remains default-denied. Read
-`docs/operational-kernel-v01.md` before exercising it. `SHADOW` is non-authoritative and never
-permits external side effects.
+Use `production prepare` only from a verified immutable import into an absent disjoint root. It
+proves the copy before mutation, bootstraps `SHADOW`, and creates locally retained author, courier,
+and task-bound credentials without emitting their values. Use `scripts/post_office_task.py` for an
+authenticated task's inbox and lifecycle operations. Read `docs/operational-kernel-v01.md`,
+`docs/authority-provisioning-kernel-v01.md`, and `docs/shadow-cutover-v01.md` first. `SHADOW` is
+non-authoritative and never permits external side effects.
 
-Every non-help operation returns one versioned JSON result or diagnostic. Preserve that output as
-the operation receipt. A successful preview is evidence, not authority to apply the proposed
-change.
+Every non-help operation returns one versioned JSON result or diagnostic. Preserve it as the
+operation receipt. A successful rehearsal is evidence, not authority. After authority transfer,
+the activation pointer and retained committed transfer must agree before any client treats the
+database as production.
 
-Read `docs/delivery-phases.md` before describing P0, P0.1, P1, P2, P2.1, or P3.1. Those names are delivery
+Read `docs/delivery-phases.md` before describing P0, P0.1, P1, P2, P2.1, or P3.1 through P3.6. Those names are delivery
 gates, not defect priorities or runtime states.

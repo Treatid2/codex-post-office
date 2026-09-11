@@ -6,6 +6,18 @@
     {
       "afterRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
       "aggregateVersion": 0,
+      "authorization": {
+        "activeCapabilityIds": [
+          "PON-CAPABILITY-001"
+        ],
+        "activeGrantIds": [],
+        "actorId": "PON-ACTOR-001",
+        "actorStatus": "ACTIVE",
+        "capabilityAllowed": true,
+        "decision": "CAPABILITY_ALLOWED",
+        "implemented": true,
+        "proposedOperation": "hub.status"
+      },
       "beforeRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
       "createdIds": [],
       "ok": true,
@@ -58,7 +70,8 @@
         "afterRoot",
         "createdIds",
         "warnings",
-        "receipt"
+        "receipt",
+        "authorization"
       ],
       "type": "object"
     },
@@ -110,6 +123,7 @@
                 "PON_CONTRACT_FIXTURE_UNEXPECTED",
                 "PON_CONTRACT_INVALID",
                 "PON_CREDENTIAL_INVALID",
+                "PON_CUSTODY_NOT_VERIFIED",
                 "PON_DATABASE_INVALID",
                 "PON_IDEMPOTENCY_CONFLICT",
                 "PON_INPUT_INVALID",
@@ -118,11 +132,13 @@
                 "PON_KERNEL_NOT_BOOTSTRAPPED",
                 "PON_LEGACY_SCHEMA_UNSUPPORTED",
                 "PON_MIGRATION_MISMATCH",
+                "PON_OBSERVATION_MISMATCH",
                 "PON_OPERATION_NOT_IMPLEMENTED",
                 "PON_OUTPUT_EXISTS",
                 "PON_PATH_CONFLICT",
                 "PON_PATH_NOT_FOUND",
                 "PON_PRODUCTION_MUTATION_FORBIDDEN",
+                "PON_RATE_LIMITED",
                 "PON_RECONCILIATION_AMBIGUOUS",
                 "PON_RECONCILIATION_DUPLICATE",
                 "PON_RECONCILIATION_HASH_MISMATCH",
@@ -188,6 +204,73 @@
       "minimum": 0,
       "type": "integer"
     },
+    "authorization": {
+      "additionalProperties": false,
+      "properties": {
+        "activeCapabilityIds": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+            "type": "string"
+          },
+          "minItems": 0,
+          "type": "array"
+        },
+        "activeGrantIds": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+            "type": "string"
+          },
+          "minItems": 0,
+          "type": "array"
+        },
+        "actorId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "actorStatus": {
+          "enum": [
+            "ACTIVE",
+            "REVOKED",
+            "RETIRED",
+            "NOT_FOUND"
+          ],
+          "minLength": 1,
+          "type": "string"
+        },
+        "capabilityAllowed": {
+          "type": "boolean"
+        },
+        "decision": {
+          "enum": [
+            "CAPABILITY_ALLOWED",
+            "DENIED"
+          ],
+          "minLength": 1,
+          "type": "string"
+        },
+        "implemented": {
+          "type": "boolean"
+        },
+        "proposedOperation": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "actorId",
+        "actorStatus",
+        "proposedOperation",
+        "implemented",
+        "capabilityAllowed",
+        "activeCapabilityIds",
+        "activeGrantIds",
+        "decision"
+      ],
+      "type": "object"
+    },
     "beforeRoot": {
       "minLength": 1,
       "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
@@ -213,6 +296,7 @@
             "PON_CONTRACT_FIXTURE_UNEXPECTED",
             "PON_CONTRACT_INVALID",
             "PON_CREDENTIAL_INVALID",
+            "PON_CUSTODY_NOT_VERIFIED",
             "PON_DATABASE_INVALID",
             "PON_IDEMPOTENCY_CONFLICT",
             "PON_INPUT_INVALID",
@@ -221,11 +305,13 @@
             "PON_KERNEL_NOT_BOOTSTRAPPED",
             "PON_LEGACY_SCHEMA_UNSUPPORTED",
             "PON_MIGRATION_MISMATCH",
+            "PON_OBSERVATION_MISMATCH",
             "PON_OPERATION_NOT_IMPLEMENTED",
             "PON_OUTPUT_EXISTS",
             "PON_PATH_CONFLICT",
             "PON_PATH_NOT_FOUND",
             "PON_PRODUCTION_MUTATION_FORBIDDEN",
+            "PON_RATE_LIMITED",
             "PON_RECONCILIATION_AMBIGUOUS",
             "PON_RECONCILIATION_DUPLICATE",
             "PON_RECONCILIATION_HASH_MISMATCH",
@@ -338,6 +424,7 @@
               "PON_CONTRACT_FIXTURE_UNEXPECTED",
               "PON_CONTRACT_INVALID",
               "PON_CREDENTIAL_INVALID",
+              "PON_CUSTODY_NOT_VERIFIED",
               "PON_DATABASE_INVALID",
               "PON_IDEMPOTENCY_CONFLICT",
               "PON_INPUT_INVALID",
@@ -346,11 +433,13 @@
               "PON_KERNEL_NOT_BOOTSTRAPPED",
               "PON_LEGACY_SCHEMA_UNSUPPORTED",
               "PON_MIGRATION_MISMATCH",
+              "PON_OBSERVATION_MISMATCH",
               "PON_OPERATION_NOT_IMPLEMENTED",
               "PON_OUTPUT_EXISTS",
               "PON_PATH_CONFLICT",
               "PON_PATH_NOT_FOUND",
               "PON_PRODUCTION_MUTATION_FORBIDDEN",
+              "PON_RATE_LIMITED",
               "PON_RECONCILIATION_AMBIGUOUS",
               "PON_RECONCILIATION_DUPLICATE",
               "PON_RECONCILIATION_HASH_MISMATCH",
@@ -407,7 +496,7 @@
   ],
   "title": "authority.inspect result",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_2",
   "x-invariants": [],
   "x-mutates": false
 }

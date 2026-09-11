@@ -1,11 +1,12 @@
 # Post Office Next
 
-> **Development preview:** this is an unofficial Treatid2 plugin. It is not endorsed by OpenAI,
-> Google, Microsoft, or the Playwright project. It is not a production replacement yet.
+> **Cutover candidate:** this is an unofficial Treatid2 plugin. It is not endorsed by OpenAI,
+> Google, Microsoft, or the Playwright project. Production authority remains gated by a clean,
+> exact P3.6 dossier and one explicit author action.
 
 Post Office Next is a side-by-side, ground-up control-plane implementation. The current
-`codex-comms` plugin remains the online transport kernel; this tree neither imports its Python
-modules nor mutates its state.
+`codex-comms` plugin remains the online transport kernel until the one-time cutover. This tree
+neither imports its Python modules nor mutates its state during capture, rehearsal, or staging.
 
 The current target architecture is defined by
 [`docs/architecture-direction-v03.md`](docs/architecture-direction-v03.md). Google Drive is a
@@ -15,11 +16,13 @@ The old and new systems will not operate as dual authorities: the old Post Offic
 unchanged until a fully implemented vNext passes rehearsal and optional shadow validation, followed
 by one separately authorised production switchover.
 
-The exact meanings of P0, P0.1, P1, P2, P2.1, P2.2, P2.3, P2.4, and P3.1 are fixed in
+The exact meanings of P0, P0.1, P1, P2, P2.1, P2.2, P2.3, P2.4, and P3.1 through P3.6 are fixed in
 [`docs/delivery-phases.md`](docs/delivery-phases.md); they are engineering gates, not severity labels.
+The complete implementation-to-cutover sequence and post-cutover operational roadmap are in
+[`docs/complete-roadmap-v01.md`](docs/complete-roadmap-v01.md).
 
 The current delivery spans the P0/P0.1 contract and isolation gates, P1 evidence tooling, the
-isolated P2/P2.1 database and migration foundation, and the P3.1 operational kernel:
+isolated P2/P2.1 database and migration foundation, and the complete P3 operational kernel:
 
 - versioned entity, operation-request, operation-result, and diagnostic JSON Schemas;
 - a complete operation catalogue with per-aggregate concurrency rules;
@@ -33,12 +36,17 @@ isolated P2/P2.1 database and migration foundation, and the P3.1 operational ker
 - verified database backup and restore with immutable receipts; and
 - authenticated, default-deny contract dispatch with durable request replay and conflict detection;
 - reusable aggregate-CAS and hash-chained mutation-event primitives;
-- the first kernel-routed operation, `hub.status`; and
+- kernel-routed `hub.status` and authority inspection;
+- scoped authority grant/revocation with exact author-action consumption;
+- endpoint allocation/revocation and mailbox allocation/generation rotation;
+- secure project/task provisioning and semantic package/message workflows;
+- recoverable local/native/Playwright transport plus automatic-review return wakes;
+- retained shadow reconciliation, rehearsal and cutover dossiers; and
 - stable, machine-readable diagnostics and receipts.
 
-The migration and kernel commands write only an explicitly selected isolated or non-authoritative
-shadow database. No production routing, wake, browser poke, automatic review, authority activation,
-or cut-over command exists in this plugin.
+The cutover candidate writes only to explicitly selected local paths. Production authority is
+unavailable until `cutover activate` validates an exact ready dossier and publishes a locally
+verifiable pointer. Normal retention and routing do not use Google Drive.
 
 Automatic code review is deliberately a companion tool, not part of this control-plane plugin.
 Its project-independent interface can use Post Office custody, transient browser transport,
@@ -52,6 +60,7 @@ See [`docs/automatic-review-boundary.md`](docs/automatic-review-boundary.md).
 ./scripts/Invoke-PostOfficeNext.ps1 contracts validate
 ./scripts/Invoke-PostOfficeNext.ps1 source-manifest --source-root <path> --snapshot-archive <zip> --output <json>
 ./scripts/Invoke-PostOfficeNext.ps1 state-capture --source-state-root <path> --capture-root <path> [--external-evidence-manifest <json>]
+./scripts/Invoke-PostOfficeNext.ps1 payload-delta --capture-root <frozen-capture> --baseline-payload-manifest <manifest.json> --source-state-root <retired-read-only-state> --output-root <new-delta-root>
 ./scripts/Invoke-PostOfficeNext.ps1 snapshot --capture-root <path> --output <json>
 ./scripts/Invoke-PostOfficeNext.ps1 reconcile-preview --snapshot <json> --assertions <json> --output <json>
 ./scripts/Invoke-PostOfficeNext.ps1 performance-baseline --output <json> --iterations 5 [--capture-root <path>]
@@ -61,11 +70,21 @@ See [`docs/automatic-review-boundary.md`](docs/automatic-review-boundary.md).
 ./scripts/Invoke-PostOfficeNext.ps1 database restore --path <backup.sqlite3> --backup-receipt <backup-receipt.json> --destination <restored.sqlite3> --receipt <restore-receipt.json>
 ./scripts/Invoke-PostOfficeNext.ps1 migration import --capture-root <frozen-capture> --baseline-payload-manifest <manifest.json> --payload-delta-manifest <manifest.json> --output-root <new-rehearsal-root>
 ./scripts/Invoke-PostOfficeNext.ps1 migration replay --source-root <imported-rehearsal-root> --output-root <new-replay-root>
+./scripts/Invoke-PostOfficeNext.ps1 production prepare --source-root <verified-import-root> --output-root <new-shadow-root> --receipt <new-receipt.json>
 ./scripts/Invoke-PostOfficeNext.ps1 kernel credential-create --output <credential.json> --capability-id <id>
 ./scripts/Invoke-PostOfficeNext.ps1 kernel bootstrap --path <isolated-vnext.sqlite3> --credential <credential.json> --actor-id <id> --actor-kind HUMAN --actor-role authenticated-reader --mode ISOLATED
 ./scripts/Invoke-PostOfficeNext.ps1 kernel inspect --path <isolated-vnext.sqlite3>
 ./scripts/Invoke-PostOfficeNext.ps1 kernel execute --path <isolated-vnext.sqlite3> --request <request.json> --credential <credential.json>
+./scripts/Invoke-PostOfficeNext.ps1 runtime reconcile --path <vnext.sqlite3> --credential <courier.json>
+./scripts/Invoke-PostOfficeNext.ps1 reviews ensure --path <vnext.sqlite3> --credential <courier.json> --review-id <id> --semantic-message-id <id> --requester-task-id <id> --reviewer-endpoint-id <id> --package-sha256 <sha256>
+./scripts/Invoke-PostOfficeNext.ps1 shadow dossier --path <shadow.sqlite3> --credential <author.json> --legacy-final-root <sha256> --output <dossier.json>
+./scripts/Invoke-PostOfficeNext.ps1 cutover preflight --path <shadow.sqlite3> --credential <author.json> --dossier-id <id> --dossier-root <sha256>
 ```
+
+After preparation, authenticated tasks use `scripts/post_office_task.py` for `task`, `inbox`,
+`activate`, `block`, `respond`, `review`, and `close`. Preparation writes replacement credentials
+only beneath the new root's `caller-secrets` directory and records hashes—not secrets—in its
+receipt. Automatic review uses `scripts/auto_review.py` as the attested backend.
 
 Every operational command emits one JSON result on stdout and returns a non-zero exit code with a
 stable, versioned diagnostic on failure, including command-line parse failures. `--help` is the sole
@@ -81,5 +100,8 @@ See [`docs/deterministic-migration-v01.md`](docs/deterministic-migration-v01.md)
 preservation rules, replay proof, and current limitations.
 Read [`docs/operational-kernel-v01.md`](docs/operational-kernel-v01.md) before using the P3.1
 commands.
+Read [`docs/authority-provisioning-kernel-v01.md`](docs/authority-provisioning-kernel-v01.md) before
+using the P3.2 authority, endpoint, or mailbox operations.
+Read [`docs/shadow-cutover-v01.md`](docs/shadow-cutover-v01.md) before any authority transfer.
 
 This plugin is distributed under the Mozilla Public License 2.0; see the repository `LICENSE`.

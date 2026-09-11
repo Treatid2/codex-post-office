@@ -9,13 +9,22 @@
         "kind": "HUMAN",
         "role": "browser"
       },
+      "aggregate": {
+        "expectedVersion": 0,
+        "id": "PON-AGGREGATE-001",
+        "type": "Example"
+      },
       "authority": {
+        "authorityGrantId": "PON-GRANT-001",
         "capabilityId": "PON-CAPABILITY-001"
       },
       "operation": "task.planCreate",
       "parameters": {
+        "acceptanceContractRoot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityGrantId": "PON-EXAMPLE-001",
         "objective": "example",
         "projectId": "PON-EXAMPLE-001",
+        "taskId": "PON-EXAMPLE-001",
         "taskKind": "example"
       },
       "requestId": "PON-REQUEST-001",
@@ -54,29 +63,99 @@
       ],
       "type": "object"
     },
-    "authority": {
+    "aggregate": {
       "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "expectedVersion"
+          ]
+        },
+        {
+          "required": [
+            "expectedRoot"
+          ]
+        }
+      ],
       "properties": {
-        "authorityGrantId": {
+        "expectedRoot": {
+          "minLength": 1,
+          "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "expectedVersion": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "id": {
           "minLength": 1,
           "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
           "type": "string"
         },
-        "capabilityId": {
+        "type": {
           "minLength": 1,
-          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
-          "type": "string"
-        },
-        "exactAuthorActionId": {
-          "minLength": 1,
-          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
           "type": "string"
         }
       },
       "required": [
-        "capabilityId"
+        "type",
+        "id"
       ],
       "type": "object"
+    },
+    "authority": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "authorityGrantId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "capabilityId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "exactAuthorActionId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "capabilityId",
+            "authorityGrantId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "authorityGrantId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "capabilityId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "exactAuthorActionId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "capabilityId",
+            "exactAuthorActionId"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "operation": {
       "const": "task.planCreate"
@@ -84,6 +163,16 @@
     "parameters": {
       "additionalProperties": false,
       "properties": {
+        "acceptanceContractRoot": {
+          "minLength": 1,
+          "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "authorityGrantId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
         "mutablePackageIds": {
           "items": {
             "minLength": 1,
@@ -103,15 +192,23 @@
           "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
           "type": "string"
         },
+        "taskId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
         "taskKind": {
           "minLength": 1,
           "type": "string"
         }
       },
       "required": [
+        "taskId",
         "projectId",
         "taskKind",
-        "objective"
+        "objective",
+        "acceptanceContractRoot",
+        "authorityGrantId"
       ],
       "type": "object"
     },
@@ -130,11 +227,12 @@
     "requestId",
     "actor",
     "authority",
-    "parameters"
+    "parameters",
+    "aggregate"
   ],
   "title": "task.planCreate request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_3",
   "x-minimumAuthority": "browser",
-  "x-mutates": false
+  "x-mutates": true
 }

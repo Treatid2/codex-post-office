@@ -4,6 +4,10 @@ P3.1 introduces the first callable operation dispatcher backed by the isolated v
 does not make vNext authoritative and cannot select a production mode. The only permitted instance
 modes are `ISOLATED` and non-authoritative `SHADOW`.
 
+P3.2 reuses this kernel for authority, endpoint and mailbox mutations. See
+[`authority-provisioning-kernel-v01.md`](authority-provisioning-kernel-v01.md); none of P3.1's
+production and side-effect exclusions is relaxed.
+
 ## Delivered boundary
 
 The operational kernel now provides:

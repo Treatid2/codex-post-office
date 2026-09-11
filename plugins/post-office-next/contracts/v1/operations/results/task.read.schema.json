@@ -18,6 +18,17 @@
       },
       "requestId": "PON-REQUEST-001",
       "schemaVersion": "1",
+      "task": {
+        "acceptanceContractRoot": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "authorityGrantId": "PON-GRANT-001",
+        "endpointBinding": null,
+        "id": "PON-TASK-001",
+        "mutablePackageId": null,
+        "objective": "Example objective",
+        "projectId": "PON-PROJECT-001",
+        "state": "ACTIVE",
+        "taskKind": "PROJECT_MANAGEMENT"
+      },
       "warnings": []
     },
     {
@@ -58,7 +69,8 @@
         "afterRoot",
         "createdIds",
         "warnings",
-        "receipt"
+        "receipt",
+        "task"
       ],
       "type": "object"
     },
@@ -110,6 +122,7 @@
                 "PON_CONTRACT_FIXTURE_UNEXPECTED",
                 "PON_CONTRACT_INVALID",
                 "PON_CREDENTIAL_INVALID",
+                "PON_CUSTODY_NOT_VERIFIED",
                 "PON_DATABASE_INVALID",
                 "PON_IDEMPOTENCY_CONFLICT",
                 "PON_INPUT_INVALID",
@@ -118,11 +131,13 @@
                 "PON_KERNEL_NOT_BOOTSTRAPPED",
                 "PON_LEGACY_SCHEMA_UNSUPPORTED",
                 "PON_MIGRATION_MISMATCH",
+                "PON_OBSERVATION_MISMATCH",
                 "PON_OPERATION_NOT_IMPLEMENTED",
                 "PON_OUTPUT_EXISTS",
                 "PON_PATH_CONFLICT",
                 "PON_PATH_NOT_FOUND",
                 "PON_PRODUCTION_MUTATION_FORBIDDEN",
+                "PON_RATE_LIMITED",
                 "PON_RECONCILIATION_AMBIGUOUS",
                 "PON_RECONCILIATION_DUPLICATE",
                 "PON_RECONCILIATION_HASH_MISMATCH",
@@ -213,6 +228,7 @@
             "PON_CONTRACT_FIXTURE_UNEXPECTED",
             "PON_CONTRACT_INVALID",
             "PON_CREDENTIAL_INVALID",
+            "PON_CUSTODY_NOT_VERIFIED",
             "PON_DATABASE_INVALID",
             "PON_IDEMPOTENCY_CONFLICT",
             "PON_INPUT_INVALID",
@@ -221,11 +237,13 @@
             "PON_KERNEL_NOT_BOOTSTRAPPED",
             "PON_LEGACY_SCHEMA_UNSUPPORTED",
             "PON_MIGRATION_MISMATCH",
+            "PON_OBSERVATION_MISMATCH",
             "PON_OPERATION_NOT_IMPLEMENTED",
             "PON_OUTPUT_EXISTS",
             "PON_PATH_CONFLICT",
             "PON_PATH_NOT_FOUND",
             "PON_PRODUCTION_MUTATION_FORBIDDEN",
+            "PON_RATE_LIMITED",
             "PON_RECONCILIATION_AMBIGUOUS",
             "PON_RECONCILIATION_DUPLICATE",
             "PON_RECONCILIATION_HASH_MISMATCH",
@@ -326,6 +344,83 @@
     "schemaVersion": {
       "const": "1"
     },
+    "task": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptanceContractRoot": {
+          "minLength": 1,
+          "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "authorityGrantId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "endpointBinding": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "id": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "mutablePackageId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "objective": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "projectId": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "PROPOSED",
+            "TRIAGED",
+            "AWAITING_AUTHORITY",
+            "PROVISIONING",
+            "READY",
+            "ACTIVE",
+            "BLOCKED",
+            "RESPONSE_RETURNED",
+            "UNDER_REVIEW",
+            "ACCEPTED",
+            "CORRECTION_REQUIRED",
+            "REJECTED",
+            "CLOSED",
+            "CANCELLED"
+          ],
+          "minLength": 1,
+          "type": "string"
+        },
+        "taskKind": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "projectId",
+        "taskKind",
+        "objective",
+        "mutablePackageId",
+        "acceptanceContractRoot",
+        "authorityGrantId",
+        "state",
+        "endpointBinding"
+      ],
+      "type": "object"
+    },
     "warnings": {
       "items": {
         "additionalProperties": false,
@@ -338,6 +433,7 @@
               "PON_CONTRACT_FIXTURE_UNEXPECTED",
               "PON_CONTRACT_INVALID",
               "PON_CREDENTIAL_INVALID",
+              "PON_CUSTODY_NOT_VERIFIED",
               "PON_DATABASE_INVALID",
               "PON_IDEMPOTENCY_CONFLICT",
               "PON_INPUT_INVALID",
@@ -346,11 +442,13 @@
               "PON_KERNEL_NOT_BOOTSTRAPPED",
               "PON_LEGACY_SCHEMA_UNSUPPORTED",
               "PON_MIGRATION_MISMATCH",
+              "PON_OBSERVATION_MISMATCH",
               "PON_OPERATION_NOT_IMPLEMENTED",
               "PON_OUTPUT_EXISTS",
               "PON_PATH_CONFLICT",
               "PON_PATH_NOT_FOUND",
               "PON_PRODUCTION_MUTATION_FORBIDDEN",
+              "PON_RATE_LIMITED",
               "PON_RECONCILIATION_AMBIGUOUS",
               "PON_RECONCILIATION_DUPLICATE",
               "PON_RECONCILIATION_HASH_MISMATCH",
@@ -407,7 +505,7 @@
   ],
   "title": "task.read result",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_3",
   "x-invariants": [],
   "x-mutates": false
 }

@@ -30,7 +30,7 @@ from .canonical import (
 )
 from .database import initialize_database, inspect_database
 from .diagnostics import PostOfficeError
-from .legacy import AUTO_REVIEW_SCHEMA_VERSION, HUB_SCHEMA_VERSION, OBSERVER_SCHEMA_VERSION, readonly_connection
+from .legacy import SUPPORTED_LEGACY_SCHEMA_VERSIONS, readonly_connection
 from .snapshot import _validate_capture_manifest
 
 
@@ -149,15 +149,10 @@ def _verify_capture(capture_root: Path) -> tuple[dict[str, Any], list[dict[str, 
     manifest = read_json(manifest_path)
     databases, external = _validate_capture_manifest(capture_root, manifest)
     versions = manifest.get("legacySchemaVersions", {})
-    expected_versions = {
-        "hub": HUB_SCHEMA_VERSION,
-        "autoReview": AUTO_REVIEW_SCHEMA_VERSION,
-        "observer": OBSERVER_SCHEMA_VERSION,
-    }
     mismatch = {
-        name: {"expected": expected, "actual": versions.get(name)}
-        for name, expected in expected_versions.items()
-        if versions.get(name) is not None and versions.get(name) != expected
+        name: {"supported": sorted(supported), "actual": versions.get(name)}
+        for name, supported in SUPPORTED_LEGACY_SCHEMA_VERSIONS.items()
+        if versions.get(name) is not None and versions.get(name) not in supported
     }
     if mismatch:
         raise PostOfficeError(
@@ -624,6 +619,8 @@ def _project_normalized_state(con: sqlite3.Connection, plan: dict[str, Any]) -> 
     message_rows = tables.get(("hub", "messages"), [])
     payload_rows = tables.get(("hub", "message_payloads"), [])
     delivery_rows = tables.get(("hub", "browser_deliveries"), [])
+    review_rows = tables.get(("hub", "auto_reviews"), [])
+    reviewer_rows = tables.get(("hub", "auto_review_reviewers"), [])
     binding_rows = {
         str(row.get("mailbox_id")): row
         for row in tables.get(("hub", "browser_chat_bindings"), [])
@@ -636,6 +633,9 @@ def _project_normalized_state(con: sqlite3.Connection, plan: dict[str, Any]) -> 
             if row.get("project_code")
         }
     )
+    if review_rows and "AUTO-REVIEW" not in project_codes:
+        project_codes.append("AUTO-REVIEW")
+        project_codes.sort()
     project_ids: dict[str, str] = {}
     mail_domains: dict[str, str] = {}
     for code in project_codes:
@@ -647,7 +647,10 @@ def _project_normalized_state(con: sqlite3.Connection, plan: dict[str, Any]) -> 
             "status": "ACTIVE",
         }
         con.execute(
-            "INSERT INTO projects VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            """INSERT INTO projects(
+               project_id,code,display_name,kind,status,local_project_root,local_cas_root,
+               local_backup_root,aggregate_version,aggregate_root,created_event_id,created_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 project_id,
                 code,
@@ -774,7 +777,8 @@ def _project_normalized_state(con: sqlite3.Connection, plan: dict[str, Any]) -> 
             "browserBinding": binding,
             "migrationRunId": run_id,
         }
-        con.execute("INSERT INTO actors VALUES(?,?,?,?,?)", (actor_id, "ENDPOINT", kind, actor_status, row.get("created_at") or source_time))
+        actor_kind = "BROWSER" if kind == "BROWSER_PROXY" else "COURIER" if kind == "COURIER" else "ENDPOINT"
+        con.execute("INSERT INTO actors VALUES(?,?,?,?,?)", (actor_id, actor_kind, kind, actor_status, row.get("created_at") or source_time))
         con.execute(
             "INSERT INTO endpoints VALUES(?,?,?,?,?,?,?,?,?,?)",
             (
@@ -822,6 +826,90 @@ def _project_normalized_state(con: sqlite3.Connection, plan: dict[str, Any]) -> 
         )
         actor_by_mailbox[mailbox_id] = actor_id
         endpoint_by_mailbox[mailbox_id] = endpoint_id
+
+    task_by_thread: dict[str, str] = {}
+    requester_mailbox_by_thread: dict[str, tuple[str, int]] = {}
+
+    def insert_retained_task(
+        *, thread_id: str, host_id: str | None, project_id: str, actor_id: str,
+        endpoint_id: str, mailbox_id: str, generation: int, created_at: str,
+    ) -> str:
+        retained = task_by_thread.get(thread_id)
+        if retained:
+            return retained
+        task_id = _safe_id("TASK", ["legacy-thread", thread_id])
+        task_grant_id = _safe_id("GRANT", ["legacy-task", thread_id])
+        contract = {
+            "threadId": thread_id, "hostId": host_id, "mailboxId": mailbox_id,
+            "generation": generation, "migrationRunId": run_id,
+        }
+        con.execute(
+            "INSERT INTO authority_grants(grant_id,grantor_actor_id,recipient_actor_id,allowed_operations_json,scope_json,classification,maximum_uses,remaining_uses,status,rationale,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                task_grant_id, legacy_author_actor, actor_id, _json_text(["legacy.task.continue"]),
+                _json_text(contract), "STANDING", None, None, "ACTIVE",
+                "Retained legacy task identity; grants no new vNext operation", created_at,
+            ),
+        )
+        aggregate = {**contract, "taskId": task_id, "state": "ACTIVE"}
+        con.execute(
+            "INSERT INTO tasks VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                task_id, project_id, "PROJECT_MANAGEMENT", "Continue retained legacy task",
+                None, sha256_json(contract), task_grant_id, "ACTIVE", 1,
+                sha256_json(aggregate), None, created_at,
+            ),
+        )
+        con.execute("UPDATE endpoints SET task_id=? WHERE endpoint_id=?", (task_id, endpoint_id))
+        con.execute(
+            "INSERT INTO task_endpoint_bindings VALUES(?,?,?,?,?,?)",
+            (task_id, endpoint_id, mailbox_id, generation, f"MIGRATION:{run_id}", created_at),
+        )
+        task_by_thread[thread_id] = task_id
+        requester_mailbox_by_thread[thread_id] = (mailbox_id, generation)
+        return task_id
+
+    for mailbox_id in sorted(mailbox_meta):
+        row = mailbox_meta[mailbox_id]
+        thread_id = row.get("thread_id")
+        if not thread_id or str(row.get("kind") or "") != "CODEX":
+            continue
+        insert_retained_task(
+            thread_id=str(thread_id), host_id=row.get("host_id"),
+            project_id=project_ids[str(row.get("project_code"))],
+            actor_id=actor_by_mailbox[mailbox_id], endpoint_id=endpoint_by_mailbox[mailbox_id],
+            mailbox_id=mailbox_id, generation=int(row.get("generation") or 1),
+            created_at=str(row.get("created_at") or source_time),
+        )
+
+    review_project_id = project_ids.get("AUTO-REVIEW")
+    for row in sorted(review_rows, key=lambda item: str(item.get("requester_thread_id") or "")):
+        thread_id = str(row.get("requester_thread_id") or "")
+        if not thread_id or thread_id in task_by_thread:
+            continue
+        actor_id = _safe_id("ACTOR", ["review-requester", thread_id])
+        endpoint_id = _safe_id("ENDPOINT", ["review-requester", thread_id])
+        mailbox_id = _safe_id("REVIEW-REQUESTER-MBX", thread_id, 40)
+        created_at = str(row.get("created_at") or source_time)
+        scope = {
+            "threadId": thread_id, "hostId": row.get("requester_host_id"),
+            "requesterProjectId": row.get("requester_project_id"),
+            "requesterRoot": row.get("requester_root"), "migrationRunId": run_id,
+        }
+        con.execute("INSERT INTO actors VALUES(?,?,?,?,?)", (actor_id, "ENDPOINT", "REVIEW_REQUESTER", "ACTIVE", created_at))
+        con.execute(
+            "INSERT INTO endpoints VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (endpoint_id, actor_id, review_project_id, None, "REVIEW_REQUESTER", _json_text(scope), "ACTIVE", sha256_json(scope), None, created_at),
+        )
+        con.execute(
+            "INSERT INTO mailboxes VALUES(?,?,?,?,?,?,?)",
+            (mailbox_id, 1, mail_domains["AUTO-REVIEW"], endpoint_id, "ACTIVE", None, created_at),
+        )
+        insert_retained_task(
+            thread_id=thread_id, host_id=row.get("requester_host_id"), project_id=review_project_id,
+            actor_id=actor_id, endpoint_id=endpoint_id, mailbox_id=mailbox_id, generation=1,
+            created_at=created_at,
+        )
 
     messages_by_cycle: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in message_rows:
@@ -1087,15 +1175,9 @@ def _project_normalized_state(con: sqlite3.Connection, plan: dict[str, Any]) -> 
         con.execute(
             "INSERT INTO transport_attempts VALUES(?,?,?,?,?,?,?,?,?,?)",
             (
-                attempt_id,
-                message_id,
-                bundle_by_message[message_id],
-                "LEGACY_BROWSER_DELIVERY",
-                str(row.get("expected_endpoint") or "LEGACY_BROWSER"),
-                state,
-                attempt_number,
-                None,
-                row.get("created_at") or source_time,
+                attempt_id, message_id, bundle_by_message[message_id],
+                "LEGACY_BROWSER_DELIVERY", str(row.get("expected_endpoint") or "LEGACY_BROWSER"),
+                state, attempt_number, None, row.get("created_at") or source_time,
                 row.get("updated_at") or source_time,
             ),
         )
@@ -1107,22 +1189,218 @@ def _project_normalized_state(con: sqlite3.Connection, plan: dict[str, Any]) -> 
             con.execute(
                 "INSERT INTO browser_bridge_transfers VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    _safe_id("BRIDGE", row["delivery_id"]),
-                    attempt_id,
-                    "TO_BROWSER",
-                    "GOOGLE_DRIVE",
-                    str(drive_file_id),
-                    digest,
-                    row.get("drive_sha256"),
-                    storage_copy_id,
-                    bridge_state,
-                    1,
-                    None,
-                    None,
-                    row.get("delivered_at"),
+                    _safe_id("BRIDGE", row["delivery_id"]), attempt_id, "TO_BROWSER",
+                    "GOOGLE_DRIVE", str(drive_file_id), digest, row.get("drive_sha256"),
+                    storage_copy_id, bridge_state, 1, None, None, row.get("delivered_at"),
                     row.get("created_at") or source_time,
                 ),
             )
+
+    reviewer_thread_by_mailbox: dict[str, str] = {}
+    reviewer_instance_count = 0
+    for row in sorted(reviewer_rows, key=lambda item: (int(item.get("rotation_order") or 0), str(item.get("reviewer_thread_id") or ""))):
+        reviewer_thread_id = str(row.get("reviewer_thread_id") or "")
+        reviewer_mailbox_id = str(row.get("browser_mailbox_id") or "")
+        reviewer_endpoint_id = endpoint_by_mailbox.get(reviewer_mailbox_id)
+        if not reviewer_thread_id or not reviewer_endpoint_id:
+            _insert_anomaly(
+                con, run_id, "AUTO_REVIEW_REVIEWER_IDENTITY_UNRESOLVED", "ReviewerInstance",
+                reviewer_thread_id or reviewer_mailbox_id or "UNKNOWN", row, source_time,
+            )
+            continue
+        status = "ACTIVE" if str(row.get("status") or "").upper() == "ACTIVE" else "RETIRED"
+        con.execute(
+            """INSERT INTO reviewer_instances(
+               reviewer_thread_id,endpoint_id,label,status,rotation_order,guidance_url,
+               minimum_interval_minutes,last_submission_at,registered_at,updated_at,retired_at)
+               VALUES(?,?,?,?,?,?,30,NULL,?,?,?)""",
+            (
+                reviewer_thread_id, reviewer_endpoint_id, str(row.get("label") or reviewer_thread_id),
+                status, int(row.get("rotation_order") or 0), row.get("guidance_url"),
+                str(row.get("registered_at") or source_time), str(row.get("updated_at") or source_time),
+                row.get("retired_at"),
+            ),
+        )
+        reviewer_thread_by_mailbox[reviewer_mailbox_id] = reviewer_thread_id
+        reviewer_instance_count += 1
+
+    review_state_map = {
+        "PENDING_DRIVE_DELIVERY": "QUEUED", "REVIEW_ACTIVE": "ACTIVE",
+        "REVIEW_RETURNED": "RETURNED", "COMPLETED": "EVALUATED",
+        "WITHDRAWN": "WITHDRAWN", "BLOCKED": "FAILED_FINAL",
+    }
+    imported_reviews = 0
+    for row in sorted(review_rows, key=lambda item: str(item["review_id"])):
+        review_id = str(row["review_id"])
+        requester_thread = str(row.get("requester_thread_id") or "")
+        reviewer_mailbox = str(row.get("browser_mailbox_id") or "")
+        task_id = task_by_thread.get(requester_thread)
+        reviewer_endpoint = endpoint_by_mailbox.get(reviewer_mailbox)
+        package_hash = str(row.get("package_sha256") or "").lower().removeprefix("sha256:")
+        if not task_id or not reviewer_endpoint or not SHA256.fullmatch(package_hash):
+            _insert_anomaly(
+                con, run_id, "AUTO_REVIEW_IDENTITY_UNRESOLVED", "AutomaticReview", review_id,
+                {"requesterThreadId": requester_thread, "reviewerMailboxId": reviewer_mailbox, "packageSha256": package_hash},
+                source_time,
+            )
+            continue
+        package_copy = con.execute(
+            "SELECT * FROM storage_copies WHERE content_sha256=? ORDER BY storage_copy_id LIMIT 1", (package_hash,)
+        ).fetchone()
+        if not package_copy:
+            _insert_anomaly(
+                con, run_id, "AUTO_REVIEW_PACKAGE_NOT_IN_CUSTODY", "AutomaticReview", review_id,
+                {"packageSha256": package_hash}, source_time,
+            )
+            continue
+        task = con.execute("SELECT * FROM tasks WHERE task_id=?", (task_id,)).fetchone()
+        requester_endpoint = con.execute("SELECT * FROM endpoints WHERE task_id=?", (task_id,)).fetchone()
+        requester_mailbox, requester_generation = requester_mailbox_by_thread[requester_thread]
+        cycle_action = _safe_id("ACTION", ["auto-review-cycle", review_id])
+        cycle_id = _safe_id("CYCLE", ["auto-review", review_id])
+        request_message_id = _safe_id("REVIEW-MESSAGE", review_id, 48)
+        request_grant = _safe_id("GRANT", ["auto-review-request", review_id])
+        created_at = str(row.get("created_at") or source_time)
+        queued_at = str(row.get("queued_at") or created_at)
+        con.execute(
+            "INSERT INTO exact_author_actions(action_id,actor_id,operation,scope_json,confirmation_sha256,recorded_at) VALUES(?,?,?,?,?,?)",
+            (cycle_action, legacy_author_actor, "migration.legacyReviewObserved", _json_text({"reviewId": review_id}), sha256_json(row), created_at),
+        )
+        con.execute(
+            "INSERT INTO semantic_cycles VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (cycle_id, task["project_id"], f"Imported automatic review {review_id}", cycle_action, "ACTIVE", None, None, 1, sha256_json({"reviewId": review_id, "state": "ACTIVE"}), created_at),
+        )
+        con.execute(
+            "INSERT INTO authority_grants(grant_id,grantor_actor_id,recipient_actor_id,allowed_operations_json,scope_json,classification,maximum_uses,remaining_uses,status,rationale,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (request_grant, legacy_author_actor, requester_endpoint["actor_id"], _json_text(["automatic-review.request"]), _json_text({"reviewId": review_id}), "ONE_SHOT", 1, 0, "EXHAUSTED", "Retained legacy automatic-review request", created_at),
+        )
+        mapped_review_state = review_state_map.get(str(row.get("status") or ""), "FAILED_FINAL")
+        message_state = "REGISTERED" if mapped_review_state == "QUEUED" else "QUARANTINED" if mapped_review_state in {"WITHDRAWN", "FAILED_FINAL"} else "DELIVERED"
+        message_content = {"reviewId": review_id, "subject": row.get("subject"), "legacyRowRoot": sha256_json(row)}
+        con.execute(
+            "INSERT INTO semantic_messages VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                request_message_id, task["project_id"],
+                con.execute("SELECT mail_domain FROM project_mail_domains WHERE project_id=?", (task["project_id"],)).fetchone()[0],
+                "QUERY", requester_endpoint["endpoint_id"], reviewer_mailbox,
+                int(row.get("browser_generation") or 1), cycle_id, request_grant, None,
+                "Perform independent automatic code review", "Return a retained review result",
+                sha256_json(message_content), message_state, 1,
+                sha256_json({**message_content, "state": message_state}), None, created_at,
+            ),
+        )
+        request_bundle = _safe_id("BUNDLE", ["auto-review", review_id])
+        con.execute(
+            "INSERT INTO message_bundles VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (request_bundle, request_message_id, str(row.get("package_name") or f"{review_id}.zip"), 1,
+             int(row.get("package_size_bytes") or package_copy["size_bytes"]),
+             sha256_json({"reviewId": review_id, "packageSha256": package_hash}), package_hash,
+             "REGISTERED", None, created_at),
+        )
+        con.execute("INSERT INTO bundle_payloads VALUES(?,?,?,?,?)", (request_bundle, 0, f"payloads/0000-{package_hash}", int(package_copy["size_bytes"]), package_hash))
+        result_message_id: str | None = None
+        result_hash = str(row.get("result_sha256") or "").lower().removeprefix("sha256:")
+        if mapped_review_state in {"RETURNED", "EVALUATED"} and SHA256.fullmatch(result_hash):
+            result_copy = con.execute("SELECT * FROM storage_copies WHERE content_sha256=? ORDER BY storage_copy_id LIMIT 1", (result_hash,)).fetchone()
+            if result_copy:
+                result_message_id = _safe_id("REVIEW-RESULT", review_id, 48)
+                result_grant = _safe_id("GRANT", ["auto-review-result", review_id])
+                con.execute(
+                    "INSERT INTO authority_grants(grant_id,grantor_actor_id,recipient_actor_id,allowed_operations_json,scope_json,classification,maximum_uses,remaining_uses,status,rationale,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    (result_grant, legacy_author_actor, con.execute("SELECT actor_id FROM endpoints WHERE endpoint_id=?", (reviewer_endpoint,)).fetchone()[0], _json_text(["automatic-review.report"]), _json_text({"reviewId": review_id}), "ONE_SHOT", 1, 0, "EXHAUSTED", "Retained legacy automatic-review result", str(row.get("updated_at") or created_at)),
+                )
+                result_state = "DELIVERED" if mapped_review_state == "EVALUATED" or str(row.get("return_state") or "") in {"SENT", "SENT_LEGACY", "LOCAL_CONSUMED"} else "REGISTERED"
+                con.execute(
+                    "INSERT INTO semantic_messages VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (result_message_id, task["project_id"], con.execute("SELECT mail_domain FROM project_mail_domains WHERE project_id=?", (task["project_id"],)).fetchone()[0], "RESPONSE", reviewer_endpoint, requester_mailbox, requester_generation, cycle_id, result_grant, None, "Evaluate retained review", "Record evaluation", sha256_json({"reviewId": review_id, "resultSha256": result_hash}), result_state, 1, sha256_json({"reviewId": review_id, "resultSha256": result_hash, "state": result_state}), None, str(row.get("updated_at") or created_at)),
+                )
+                result_bundle = _safe_id("BUNDLE", ["auto-review-result", review_id])
+                con.execute(
+                    "INSERT INTO message_bundles VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (result_bundle, result_message_id, str(row.get("result_name") or f"{review_id}-result.zip"), 1, int(row.get("result_size_bytes") or result_copy["size_bytes"]), sha256_json({"reviewId": review_id, "resultSha256": result_hash}), result_hash, "REGISTERED", None, str(row.get("updated_at") or created_at)),
+                )
+                con.execute("INSERT INTO bundle_payloads VALUES(?,?,?,?,?)", (result_bundle, 0, f"payloads/0000-{result_hash}", int(result_copy["size_bytes"]), result_hash))
+                return_attempt_state = "RECEIPTED" if result_state == "DELIVERED" else "PENDING"
+                con.execute(
+                    "INSERT INTO transport_attempts VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (_safe_id("TRANSPORT", ["auto-review-return", review_id]), result_message_id, result_bundle, "LEGACY_AUTOMATIC_REVIEW", requester_thread, return_attempt_state, 1, None, str(row.get("updated_at") or created_at), str(row.get("updated_at") or created_at)),
+                )
+        reviewer_thread_id = str(row.get("reviewer_thread_id") or "") or reviewer_thread_by_mailbox.get(reviewer_mailbox)
+        if reviewer_thread_id and not con.execute("SELECT 1 FROM reviewer_instances WHERE reviewer_thread_id=?", (reviewer_thread_id,)).fetchone():
+            reviewer_thread_id = None
+        con.execute(
+            """INSERT INTO automatic_reviews(
+               review_id,semantic_message_id,requester_task_id,reviewer_endpoint_id,package_sha256,
+               state,queued_at,activated_at,returned_at,evaluated_at,result_message_id,wake_dispatch_id,
+               requester_thread_id,reviewer_thread_id,package_name,package_size_bytes,legacy_status,
+               requester_host_id,subject,readiness,idempotency_key,completed_summary,withdrawn_at,
+               withdrawal_reason,withdrawal_idempotency_key)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                review_id, request_message_id, task_id, reviewer_endpoint, package_hash,
+                mapped_review_state, queued_at,
+                str(row.get("updated_at") or queued_at) if mapped_review_state in {"ACTIVE", "RETURNED", "EVALUATED"} else None,
+                str(row.get("updated_at") or queued_at) if mapped_review_state in {"RETURNED", "EVALUATED"} else None,
+                str(row.get("completed_at") or row.get("updated_at") or queued_at) if mapped_review_state == "EVALUATED" else None,
+                result_message_id, requester_thread, reviewer_thread_id,
+                str(row.get("package_name") or f"{review_id}.zip"),
+                int(row.get("package_size_bytes") or package_copy["size_bytes"]),
+                str(row.get("status") or ""),
+                row.get("requester_host_id"), row.get("subject"), row.get("readiness"),
+                row.get("idempotency_key"), row.get("completed_summary"), row.get("withdrawn_at"),
+                row.get("withdrawal_reason"), row.get("withdrawal_idempotency_key"),
+            ),
+        )
+        imported_reviews += 1
+
+    # Preserve every operational browser/review row as exact continuation evidence. Only
+    # demonstrably nonterminal legacy states become READY work; terminal rows remain RETIRED
+    # history and are never replayed. This closes the migration gap without inferring actions.
+    continuation_tables = {
+        "auto_review_activation_redeliveries", "auto_review_playwright_activations",
+        "auto_review_playwright_collections", "auto_review_result_claims",
+        "auto_review_reviewer_recoveries", "auto_review_source_receipts",
+        "browser_chat_bindings", "browser_deliveries", "browser_mcp_ingress",
+        "browser_outbox", "browser_outbox_feedback", "browser_playwright_collections",
+        "browser_playwright_dispatches", "browser_poke_queue", "browser_return_claims",
+        "browser_scan_items", "browser_sweeps", "wake_authorizations",
+    }
+    active_states = {
+        ("auto_review_playwright_activations", "PACKET_ISSUED"): "REVIEW_ACTIVATION",
+        ("browser_playwright_collections", "PACKET_ISSUED"): "BROWSER_COLLECTION",
+        ("browser_poke_queue", "POKE_DUE"): "BROWSER_POKE",
+        ("browser_scan_items", "CUSTODY_PENDING"): "BROWSER_INGRESS_CUSTODY",
+        ("wake_authorizations", "PACKET_ISSUED"): "NATIVE_WAKE",
+    }
+    continuation_count = 0
+    ready_continuation_count = 0
+    for table_name in sorted(continuation_tables):
+        for ordinal, row in enumerate(tables.get(("hub", table_name), [])):
+            # Snapshot rows preserve table column order; the first column is the declared
+            # primary key in every supported legacy operational table.
+            first_value = next(iter(row.values()), None)
+            natural_id = str(first_value) if first_value not in (None, "") else "ROW"
+            # The source snapshot canonicalizes object keys, so the first serialized field is
+            # not necessarily the SQL primary key. Retain the natural hint and stable ordinal;
+            # the complete exact legacy identity remains in payload_json and evidence_root.
+            source_id = f"{natural_id}#{ordinal:08d}"
+            legacy_state = str(row.get("status") or row.get("state") or row.get("delivery_status") or "")
+            continuation_kind = active_states.get((table_name, legacy_state), "HISTORICAL_EVIDENCE")
+            target_state = "READY" if continuation_kind != "HISTORICAL_EVIDENCE" else "RETIRED"
+            row_root = sha256_json(row)
+            con.execute(
+                """INSERT INTO continuation_items(
+                   continuation_id,source_table,source_id,continuation_kind,state,payload_json,
+                   evidence_root,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?)""",
+                (
+                    _safe_id("CONTINUATION", [table_name, source_id]), table_name, source_id,
+                    continuation_kind, target_state, _json_text(row), row_root,
+                    str(row.get("created_at") or source_time), str(row.get("updated_at") or source_time),
+                ),
+            )
+            continuation_count += 1
+            ready_continuation_count += int(target_state == "READY")
 
     normalized_targets = {
         "mailboxes": ["actors", "endpoints", "mailboxes"],
@@ -1130,11 +1408,15 @@ def _project_normalized_state(con: sqlite3.Connection, plan: dict[str, Any]) -> 
         "message_payloads": ["message_bundles", "bundle_payloads", "storage_copies"],
         "browser_deliveries": ["transport_attempts", "browser_bridge_transfers"],
         "browser_chat_bindings": ["endpoints"],
+        "auto_reviews": ["tasks", "semantic_cycles", "semantic_messages", "message_bundles", "bundle_payloads", "automatic_reviews"],
+        "auto_review_reviewers": ["reviewer_instances"],
     }
     for table in plan["tables"]:
         source_database = table["sourceDatabase"]
         table_name = table["tableName"]
         targets = normalized_targets.get(table_name, []) if source_database == "hub" else []
+        if source_database == "hub" and table_name in continuation_tables:
+            targets = [*targets, "continuation_items"]
         disposition = "NORMALIZED_AND_RAW" if targets else "RAW_ONLY"
         reason = (
             "P2.1 deterministic projection plus exact raw-row retention"
@@ -1162,6 +1444,11 @@ def _project_normalized_state(con: sqlite3.Connection, plan: dict[str, Any]) -> 
         "cycles": len(target_cycle_by_legacy),
         "bundles": len(bundle_by_message),
         "transportAttempts": sum(delivery_attempts.values()),
+        "automaticReviews": imported_reviews,
+        "reviewerInstances": reviewer_instance_count,
+        "continuationItems": continuation_count,
+        "readyContinuationItems": ready_continuation_count,
+        "tasks": len(task_by_thread),
         "capabilityId": capability_id,
         "authorityGrantId": grant_id,
         "migrationActorId": migration_actor,
@@ -1275,6 +1562,7 @@ def _event_hash_document(
     operation: str,
     capability_id: str,
     authority_grant_id: str,
+    exact_author_action_id: str | None,
     aggregate_type: str,
     aggregate_id: str,
     aggregate_version: int,
@@ -1292,6 +1580,7 @@ def _event_hash_document(
         "operation": operation,
         "capabilityId": capability_id,
         "authorityGrantId": authority_grant_id,
+        "exactAuthorActionId": exact_author_action_id,
         "aggregateType": aggregate_type,
         "aggregateId": aggregate_id,
         "aggregateVersion": aggregate_version,
@@ -1325,6 +1614,7 @@ def _insert_import_events(
             operation,
             capability_id,
             grant_id,
+            None,
             aggregate_type,
             f"{plan['migrationRunId']}:{aggregate_key}",
             1,
@@ -1712,7 +2002,7 @@ def _read_replay_plan(source_root: Path, plugin_root: Path) -> tuple[dict[str, A
         rows = list(
             con.execute(
                 "SELECT sequence,event_id,occurred_at,actor_id,operation,capability_id,authority_grant_id,"
-                "aggregate_type,aggregate_id,aggregate_version,before_state_root,after_state_root,result_json,"
+                "exact_author_action_id,aggregate_type,aggregate_id,aggregate_version,before_state_root,after_state_root,result_json,"
                 "payload_sha256,previous_event_sha256,event_sha256 FROM hub_events ORDER BY sequence"
             )
         )
@@ -1724,7 +2014,7 @@ def _read_replay_plan(source_root: Path, plugin_root: Path) -> tuple[dict[str, A
                     {"expected": expected_sequence, "actual": int(row[0])},
                 )
             try:
-                result = json.loads(str(row[12]))
+                result = json.loads(str(row[13]))
             except json.JSONDecodeError as exc:
                 raise PostOfficeError(
                     "PON_MIGRATION_MISMATCH",
@@ -1739,22 +2029,23 @@ def _read_replay_plan(source_root: Path, plugin_root: Path) -> tuple[dict[str, A
                 str(row[4]),
                 str(row[5]),
                 str(row[6]),
-                str(row[7]),
+                str(row[7]) if row[7] is not None else None,
                 str(row[8]),
-                int(row[9]),
-                str(row[10]),
+                str(row[9]),
+                int(row[10]),
                 str(row[11]),
+                str(row[12]),
                 result,
-                str(row[13]),
-                str(row[14]) if row[14] is not None else None,
+                str(row[14]),
+                str(row[15]) if row[15] is not None else None,
             )
-            if row[14] != previous or str(row[15]) != sha256_json(document):
+            if row[15] != previous or str(row[16]) != sha256_json(document):
                 raise PostOfficeError(
                     "PON_MIGRATION_MISMATCH",
                     "Migration event chain verification failed",
                     {"sequence": expected_sequence, "eventId": str(row[1])},
                 )
-            previous = str(row[15])
+            previous = str(row[16])
             kind = result.get("kind") if isinstance(result, dict) else None
             if kind == "SOURCE":
                 if source_body is not None:

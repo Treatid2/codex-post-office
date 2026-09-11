@@ -4,12 +4,27 @@
     "kind": "HUMAN",
     "role": "browser"
   },
+  "aggregate": {
+    "expectedVersion": 0,
+    "id": "PON-AGGREGATE-001",
+    "type": "Example"
+  },
   "authority": {
+    "authorityGrantId": "PON-GRANT-001",
     "capabilityId": "PON-CAPABILITY-001"
   },
   "operation": "project.planCreate",
   "parameters": {
-    "projectCode": "PON-EXAMPLE-001"
+    "displayName": "example",
+    "kind": "example",
+    "localBackupRoot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "localCasRoot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "localProjectRoot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "mailDomains": [
+      "PON-EXAMPLE-001"
+    ],
+    "projectCode": "PON-EXAMPLE-001",
+    "projectId": "PON-EXAMPLE-001"
   },
   "requestId": "PON-REQUEST-001",
   "schemaVersion": "1"

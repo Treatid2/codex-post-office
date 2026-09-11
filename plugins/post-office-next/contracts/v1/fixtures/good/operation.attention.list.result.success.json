@@ -12,6 +12,9 @@
     "stateRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
   },
   "requestId": "PON-REQUEST-001",
+  "resource": {
+    "state": "VALID"
+  },
   "schemaVersion": "1",
   "warnings": []
 }

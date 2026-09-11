@@ -6,6 +6,19 @@
   "eventId": "PON-EVENT-001",
   "ok": true,
   "operation": "project.archive",
+  "project": {
+    "code": "DEMO",
+    "displayName": "Demo",
+    "id": "PON-PROJECT-001",
+    "kind": "LOCAL",
+    "localBackupRoot": "L:/Codex/backups/demo",
+    "localCasRoot": "L:/Codex/cas/demo",
+    "localProjectRoot": "L:/Codex/projects/demo",
+    "mailDomains": [
+      "DEMO"
+    ],
+    "status": "ACTIVE"
+  },
   "receipt": {
     "receiptId": "PON-RECEIPT-001",
     "recordedAt": "2026-09-04T12:00:00Z",

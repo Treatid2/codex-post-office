@@ -118,7 +118,7 @@
   ],
   "title": "authority.inspect request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_2",
   "x-minimumAuthority": "authenticated-reader",
   "x-mutates": false
 }

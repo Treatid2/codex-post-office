@@ -6,6 +6,19 @@
   "eventId": "PON-EVENT-001",
   "ok": true,
   "operation": "project.pause",
+  "project": {
+    "code": "DEMO",
+    "displayName": "Demo",
+    "id": "PON-PROJECT-001",
+    "kind": "LOCAL",
+    "localBackupRoot": "L:/Codex/backups/demo",
+    "localCasRoot": "L:/Codex/cas/demo",
+    "localProjectRoot": "L:/Codex/projects/demo",
+    "mailDomains": [
+      "DEMO"
+    ],
+    "status": "ACTIVE"
+  },
   "receipt": {
     "mutationEventId": "PON-EVENT-001",
     "receiptId": "PON-RECEIPT-001",

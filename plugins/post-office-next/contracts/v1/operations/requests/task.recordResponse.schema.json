@@ -209,7 +209,7 @@
   ],
   "title": "task.recordResponse request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_3",
   "x-minimumAuthority": "courier",
   "x-mutates": true
 }

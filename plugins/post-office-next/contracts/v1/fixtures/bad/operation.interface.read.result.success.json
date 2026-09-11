@@ -11,6 +11,9 @@
     "requestSha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
   },
   "requestId": "PON-REQUEST-001",
+  "resource": {
+    "state": "VALID"
+  },
   "schemaVersion": "1",
   "warnings": []
 }

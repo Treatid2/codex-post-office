@@ -31,6 +31,11 @@
       "severity": "ERROR"
     },
     {
+      "code": "PON_CUSTODY_NOT_VERIFIED",
+      "retryable": false,
+      "severity": "ERROR"
+    },
+    {
       "code": "PON_DATABASE_INVALID",
       "retryable": false,
       "severity": "ERROR"
@@ -71,6 +76,11 @@
       "severity": "ERROR"
     },
     {
+      "code": "PON_OBSERVATION_MISMATCH",
+      "retryable": false,
+      "severity": "ERROR"
+    },
+    {
       "code": "PON_OPERATION_NOT_IMPLEMENTED",
       "retryable": false,
       "severity": "ERROR"
@@ -94,6 +104,11 @@
       "code": "PON_PRODUCTION_MUTATION_FORBIDDEN",
       "retryable": false,
       "severity": "ERROR"
+    },
+    {
+      "code": "PON_RATE_LIMITED",
+      "retryable": true,
+      "severity": "WARNING"
     },
     {
       "code": "PON_RECONCILIATION_AMBIGUOUS",

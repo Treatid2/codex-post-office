@@ -21,6 +21,7 @@ from post_office.canonical import sha256_file, write_json  # noqa: E402
 from post_office.diagnostics import PostOfficeError  # noqa: E402
 from post_office.legacy import capture_state  # noqa: E402
 from post_office.migration import DATABASE_NAME, import_legacy_capture, replay_migration  # noqa: E402
+from post_office.kernel import bootstrap_kernel, create_kernel_credential  # noqa: E402
 
 
 def _create_legacy_state(root: Path) -> tuple[str, Path]:
@@ -185,6 +186,15 @@ class MigrationTests(unittest.TestCase):
             replay = replay_migration(root / "import-one", root / "replay", PLUGIN_ROOT)
             self.assertEqual(replay["logicalStateRoot"], first["logicalStateRoot"])
             self.assertEqual(replay["eventChainRoot"], first["eventChainRoot"])
+
+            credential = root / "author.json"
+            create_kernel_credential(credential, "PON-CAPABILITY-IMPORTED-AUTHOR")
+            bootstrapped = bootstrap_kernel(
+                root / "import-one" / DATABASE_NAME, credential,
+                actor_id="PON-ACTOR-IMPORTED-AUTHOR", actor_kind="HUMAN",
+                actor_role="author", mode="SHADOW", plugin_root=PLUGIN_ROOT,
+            )
+            self.assertTrue(bootstrapped["ok"])
 
     def test_tampered_payload_fails_before_output_publication(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

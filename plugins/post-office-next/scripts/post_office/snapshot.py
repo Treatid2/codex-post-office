@@ -23,11 +23,9 @@ from .canonical import (
 )
 from .diagnostics import PostOfficeError
 from .legacy import (
-    AUTO_REVIEW_SCHEMA_VERSION,
-    HUB_SCHEMA_VERSION,
     LOCAL_EXTERNAL_EVIDENCE_KINDS,
-    OBSERVER_SCHEMA_VERSION,
     REMOTE_EXTERNAL_EVIDENCE_KINDS,
+    SUPPORTED_LEGACY_SCHEMA_VERSIONS,
     readonly_connection,
 )
 
@@ -450,8 +448,11 @@ def create_snapshot(capture_root: Path, output: Path) -> dict[str, Any]:
             "autoReview": int(hub_meta.get("auto_review_schema_version", -1)),
             "observer": int(observer_meta.get("schema_version", -1)) if observer else None,
         }
-        expected = {"hub": HUB_SCHEMA_VERSION, "autoReview": AUTO_REVIEW_SCHEMA_VERSION, "observer": OBSERVER_SCHEMA_VERSION}
-        mismatch = {name: {"actual": value, "expected": expected[name]} for name, value in versions.items() if value is not None and value != expected[name]}
+        mismatch = {
+            name: {"actual": value, "supported": sorted(SUPPORTED_LEGACY_SCHEMA_VERSIONS[name])}
+            for name, value in versions.items()
+            if value is not None and value not in SUPPORTED_LEGACY_SCHEMA_VERSIONS[name]
+        }
         if mismatch:
             raise PostOfficeError("PON_LEGACY_SCHEMA_UNSUPPORTED", "Captured legacy schema is unsupported", {"mismatches": mismatch})
         identity = {

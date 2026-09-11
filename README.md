@@ -10,8 +10,8 @@ environment compatibility, operation and upgrades remain the responsibility of e
 
 The repository is a Codex-compatible marketplace containing three separately installable plugins:
 
-- [post-office-next](plugins/post-office-next) — versioned contracts, legacy capture and
-  reconciliation evidence, an isolated transactional database, and the P3.1 operational kernel.
+- [post-office-next](plugins/post-office-next) — versioned contracts, deterministic migration,
+  the complete P3 operational kernel, local retained transport, and guarded one-time cutover.
 - [automatic-code-review](plugins/automatic-code-review) — a least-authority review requester
   that can use a compatible Post Office backend without granting postal operations.
 - [playwright-browser-bridge](plugins/playwright-browser-bridge) — a singleton, loopback-only
@@ -22,13 +22,13 @@ browser/CDP authority, and the browser bridge owns no mail, review, or authorisa
 
 ## Current maturity
 
-This is a **development preview**, not a complete replacement Post Office distribution.
+This is a **cutover candidate**, not a hosted service or an OpenAI-supported distribution.
 
-- The post-office-next plugin implements the P0 contract gate, P0.1 isolation gate, P1 legacy
-  evidence capture, the P2 database foundation, P2.1 deterministic migration rehearsal, and the
-  isolated P3.1 authenticated operation kernel.
-- It does not yet implement the complete production mailbox, routing, migration, or cutover
-  runtime.
+- The post-office-next plugin implements P0 through P3.6: evidence capture, deterministic
+  import/replay/restore, authenticated semantic workflows, local transport/review continuity,
+  production preparation, shadow validation, and an exact-dossier authority transfer.
+- Production activation remains deliberately unavailable until a clean final capture, matching
+  replay and restore, retained continuation proof, exact dossier, and explicit author action pass.
 - automatic-code-review is a portable, fail-closed client for a separately deployed compatible
   backend. Its trusted administrator must generate a local deployment lock before use.
 - playwright-browser-bridge is operational on supported Windows hosts for idempotent ChatGPT
@@ -39,11 +39,13 @@ Functionality will be added in response to demonstrated operational needs. The r
 promise speculative features, perpetual maintenance, compatibility with every Codex release, or
 support for downstream forks.
 
-The delivery-gate names P0, P0.1, P1, P2, P2.1, P2.2, P2.3, P2.4 and P3.1 are engineering milestones, not
+The delivery-gate names P0, P0.1, P1, P2, P2.1, P2.2, P2.3, P2.4, and P3.1 through P3.6 are engineering milestones, not
 defect severities. The numbered P2.x items are bounded implementation increments within P2, not
 production releases.
 Their exact definitions are in
 [delivery-phases.md](plugins/post-office-next/docs/delivery-phases.md).
+The end-to-end sequence, cutover boundary, and evidence-driven P4 work are in the
+[complete roadmap](plugins/post-office-next/docs/complete-roadmap-v01.md).
 
 ## Installation
 

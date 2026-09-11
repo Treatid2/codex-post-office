@@ -60,6 +60,7 @@ class Deployment:
         backend: Path,
         backend_files: dict[str, str],
         state_root: Path,
+        state_database: str,
         lock_path: Path,
         lock_sha256: str,
     ) -> None:
@@ -68,6 +69,7 @@ class Deployment:
         self.backend = backend
         self.backend_files = backend_files
         self.state_root = state_root
+        self.state_database = state_database
         self.lock_path = lock_path
         self.lock_sha256 = lock_sha256
 
@@ -150,6 +152,16 @@ def load_deployment() -> Deployment:
     python = _absolute_path(value.get("pythonExecutable"), "pythonExecutable")
     backend = _absolute_path(value.get("backendEntrypoint"), "backendEntrypoint")
     state_root = _absolute_path(value.get("stateRoot"), "stateRoot")
+    state_database = value.get("stateDatabase", "hub.sqlite3")
+    if (
+        not isinstance(state_database, str)
+        or Path(state_database).name != state_database
+        or state_database not in {"post-office-next.sqlite3", "hub.sqlite3"}
+    ):
+        raise ClientError(
+            "REVIEW_SERVICE_CONFIGURATION_INVALID",
+            "Deployment field stateDatabase is invalid.",
+        )
     python_files = _digest_map(value.get("pythonFiles"), "pythonFiles")
     backend_files = _digest_map(value.get("backendFiles"), "backendFiles")
     if python.name not in python_files or backend.name not in backend_files or "codex_comms.py" not in backend_files:
@@ -163,6 +175,7 @@ def load_deployment() -> Deployment:
         backend=backend,
         backend_files=backend_files,
         state_root=state_root,
+        state_database=state_database,
         lock_path=lock_path,
         lock_sha256=lock_sha256,
     )
@@ -271,7 +284,7 @@ def backend_path() -> Path:
     _attest_files(result.parent, deployment.backend_files)
     _attest_files(deployment.python.parent, deployment.python_files)
     if (_path_chain_has_link(deployment.state_root) or not deployment.state_root.is_dir()
-            or not _unlinked_regular_file(deployment.state_root / "hub.sqlite3")):
+            or not _unlinked_regular_file(deployment.state_root / deployment.state_database)):
         raise ClientError("REVIEW_BACKEND_UNAVAILABLE", "Registered Post Office service state is unavailable.")
     return result
 

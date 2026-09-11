@@ -14,7 +14,7 @@ $ErrorActionPreference = 'Stop'
 $SchemaVersion = '1.0'
 $Configuration = Join-Path $env:LOCALAPPDATA 'Treatid2\CodexPostOffice\automatic-code-review\runtime-lock.json'
 $Client = Join-Path $PSScriptRoot 'review_client.py'
-$ExpectedClientSha256 = 'eb8797d0ad12ea37027ad0ad3d8c8c8c8896be6f68e36d707e83efce44ca5658'
+$ExpectedClientSha256 = '5c1cd165a4ba7d0eb43557a191e80ab8248369e8e6505687997124b4f0322e0b'
 
 function Write-ReviewBootstrapFailure {
     param([string] $Code, [string] $Message)

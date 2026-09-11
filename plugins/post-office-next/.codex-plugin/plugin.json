@@ -1,7 +1,7 @@
 {
   "name": "post-office-next",
-  "version": "0.1.0+codex.20260910230036",
-  "description": "Isolated contracts, legacy capture, deterministic migration replay, and recovery tooling for the next Codex Comms control plane.",
+  "version": "0.1.0+codex.20260911160357",
+  "description": "Durable local Post Office contracts, migration, semantic workflow, transport recovery, and guarded cutover tooling.",
   "author": {
     "name": "Treatid2",
     "url": "https://github.com/Treatid2"
@@ -19,8 +19,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Post Office Next",
-    "shortDescription": "Rehearse Post Office migration safely.",
-    "longDescription": "Post Office Next provides versioned contracts, read-only legacy capture, isolated deterministic import and event replay, local content-addressed retention, and verified backup/restore. It does not mutate or replace the live Codex Comms service.",
+    "shortDescription": "Operate and migrate the local Post Office.",
+    "longDescription": "Post Office Next provides versioned contracts, read-only legacy capture, deterministic import and event replay, local content-addressed retention, authenticated mail and review workflows, transport recovery, verified backup/restore, and guarded one-time cutover.",
     "developerName": "Treatid2",
     "category": "Developer Tools",
     "capabilities": [
@@ -31,7 +31,8 @@
     "defaultPrompt": [
       "Inspect the Post Office Next contracts.",
       "Create a read-only migration snapshot.",
-      "Rehearse a deterministic Post Office migration in an isolated destination."
+      "Rehearse a deterministic Post Office migration in an isolated destination.",
+      "Inspect production cutover readiness without changing authority."
     ]
   }
 }

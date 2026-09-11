@@ -195,7 +195,7 @@
   ],
   "title": "task.block request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_3",
   "x-minimumAuthority": "recipient-or-browser",
   "x-mutates": true
 }

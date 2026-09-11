@@ -9,7 +9,13 @@
         "kind": "HUMAN",
         "role": "browser-or-endpoint"
       },
+      "aggregate": {
+        "expectedVersion": 0,
+        "id": "PON-AGGREGATE-001",
+        "type": "Example"
+      },
       "authority": {
+        "authorityGrantId": "PON-GRANT-001",
         "capabilityId": "PON-CAPABILITY-001"
       },
       "operation": "message.plan",
@@ -17,6 +23,7 @@
         "bundle": {
           "bundleVersion": 1,
           "canonicalFilename": "example",
+          "id": "PON-EXAMPLE-001",
           "manifestRoot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "payloads": [
             {
@@ -82,29 +89,99 @@
       ],
       "type": "object"
     },
-    "authority": {
+    "aggregate": {
       "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "expectedVersion"
+          ]
+        },
+        {
+          "required": [
+            "expectedRoot"
+          ]
+        }
+      ],
       "properties": {
-        "authorityGrantId": {
+        "expectedRoot": {
+          "minLength": 1,
+          "pattern": "^(?:sha256:)?[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "expectedVersion": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "id": {
           "minLength": 1,
           "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
           "type": "string"
         },
-        "capabilityId": {
+        "type": {
           "minLength": 1,
-          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
-          "type": "string"
-        },
-        "exactAuthorActionId": {
-          "minLength": 1,
-          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
           "type": "string"
         }
       },
       "required": [
-        "capabilityId"
+        "type",
+        "id"
       ],
       "type": "object"
+    },
+    "authority": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "authorityGrantId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "capabilityId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "exactAuthorActionId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "capabilityId",
+            "authorityGrantId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "authorityGrantId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "capabilityId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            },
+            "exactAuthorActionId": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "capabilityId",
+            "exactAuthorActionId"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "operation": {
       "const": "message.plan"
@@ -122,6 +199,11 @@
             "canonicalFilename": {
               "minLength": 1,
               "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$",
+              "type": "string"
+            },
+            "id": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
               "type": "string"
             },
             "manifestRoot": {
@@ -174,6 +256,7 @@
             }
           },
           "required": [
+            "id",
             "semanticMessageId",
             "canonicalFilename",
             "bundleVersion",
@@ -286,11 +369,12 @@
     "requestId",
     "actor",
     "authority",
-    "parameters"
+    "parameters",
+    "aggregate"
   ],
   "title": "message.plan request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_4",
   "x-minimumAuthority": "browser-or-endpoint",
-  "x-mutates": false
+  "x-mutates": true
 }

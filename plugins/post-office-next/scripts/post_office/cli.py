@@ -14,14 +14,43 @@ from .database import backup_database, initialize_database, inspect_database, re
 from .diagnostics import PostOfficeError
 from .legacy import capture_state, source_manifest
 from .kernel import (
+    bind_kernel_credential,
     bootstrap_kernel,
     create_kernel_credential,
+    create_kernel_actor,
     execute_operation,
     inspect_kernel,
 )
+from .runtime import (
+    claim_next_review,
+    claim_next_continuation,
+    claim_next_transport,
+    complete_automatic_review,
+    complete_continuation,
+    complete_transport,
+    ensure_automatic_review,
+    reconcile_transport,
+    reconcile_continuations,
+    retire_continuation,
+    return_automatic_review,
+    status_automatic_review,
+    withdraw_automatic_review,
+)
 from .migration import import_legacy_capture, replay_migration
+from .production import prepare_production_root
+from .payloads import capture_payload_delta
 from .reconciliation import reconcile_preview
 from .snapshot import create_snapshot
+from .shadow import (
+    create_cutover_dossier,
+    cutover_preflight,
+    decide_shadow_observation,
+    execute_cutover,
+    finish_prepared_cutover,
+    record_cutover_rehearsal,
+    record_shadow_observation,
+    rollback_pre_authority,
+)
 
 
 class JsonArgumentParser(argparse.ArgumentParser):
@@ -46,6 +75,11 @@ def _parser() -> argparse.ArgumentParser:
     capture.add_argument("--source-state-root", required=True)
     capture.add_argument("--capture-root", required=True)
     capture.add_argument("--external-evidence-manifest")
+    payload_delta = sub.add_parser("payload-delta")
+    payload_delta.add_argument("--capture-root", required=True)
+    payload_delta.add_argument("--baseline-payload-manifest", required=True)
+    payload_delta.add_argument("--source-state-root", required=True)
+    payload_delta.add_argument("--output-root", required=True)
     snapshot = sub.add_parser("snapshot")
     snapshot.add_argument("--capture-root", required=True)
     snapshot.add_argument("--output", required=True)
@@ -70,8 +104,13 @@ def _parser() -> argparse.ArgumentParser:
     migration.add_argument("--payload-delta-manifest")
     migration.add_argument("--source-root")
     migration.add_argument("--output-root", required=True)
+    production = sub.add_parser("production")
+    production.add_argument("action", choices=["prepare"])
+    production.add_argument("--source-root", required=True)
+    production.add_argument("--output-root", required=True)
+    production.add_argument("--receipt", required=True)
     kernel = sub.add_parser("kernel")
-    kernel.add_argument("action", choices=["credential-create", "bootstrap", "inspect", "execute"])
+    kernel.add_argument("action", choices=["credential-create", "credential-bind", "actor-create", "bootstrap", "inspect", "execute"])
     kernel.add_argument("--path")
     kernel.add_argument("--credential")
     kernel.add_argument("--output")
@@ -81,6 +120,72 @@ def _parser() -> argparse.ArgumentParser:
     kernel.add_argument("--actor-role")
     kernel.add_argument("--mode", choices=["ISOLATED", "SHADOW"], default="ISOLATED")
     kernel.add_argument("--request")
+    kernel.add_argument("--author-action-id")
+    kernel.add_argument("--subject-kind")
+    kernel.add_argument("--subject-id")
+    kernel.add_argument("--subject-generation", type=int)
+    kernel.add_argument("--allow-operation", action="append", dest="allowed_operations")
+    kernel.add_argument("--expires-at")
+    runtime = sub.add_parser("runtime")
+    runtime.add_argument("action", choices=["reconcile", "claim", "complete"])
+    runtime.add_argument("--path", required=True)
+    runtime.add_argument("--credential", required=True)
+    runtime.add_argument("--observations")
+    runtime.add_argument("--lease-seconds", type=int, default=600)
+    runtime.add_argument("--dispatch-id")
+    runtime.add_argument("--lease-token")
+    runtime.add_argument("--observable-marker")
+    runtime.add_argument("--observed-receipt-id")
+    reviews = sub.add_parser("reviews")
+    reviews.add_argument("action", choices=["ensure", "claim", "return", "status", "complete", "withdraw"])
+    reviews.add_argument("--path", required=True)
+    reviews.add_argument("--credential", required=True)
+    reviews.add_argument("--review-id")
+    reviews.add_argument("--semantic-message-id")
+    reviews.add_argument("--requester-task-id")
+    reviews.add_argument("--reviewer-endpoint-id")
+    reviews.add_argument("--package-sha256")
+    reviews.add_argument("--minimum-interval-minutes", type=int, default=30)
+    reviews.add_argument("--result-message-id")
+    reviews.add_argument("--reason")
+    reviews.add_argument("--summary")
+    continuation = sub.add_parser("continuation")
+    continuation.add_argument("action", choices=["reconcile", "claim", "complete", "retire"])
+    continuation.add_argument("--path", required=True)
+    continuation.add_argument("--credential", required=True)
+    continuation.add_argument("--kind")
+    continuation.add_argument("--lease-seconds", type=int, default=600)
+    continuation.add_argument("--continuation-id")
+    continuation.add_argument("--lease-token")
+    continuation.add_argument("--outcome")
+    shadow = sub.add_parser("shadow")
+    shadow.add_argument("action", choices=["observe", "decide", "record-rehearsal", "dossier"])
+    shadow.add_argument("--path", required=True)
+    shadow.add_argument("--credential", required=True)
+    shadow.add_argument("--source-kind")
+    shadow.add_argument("--source-reference")
+    shadow.add_argument("--expected-root")
+    shadow.add_argument("--observed-root")
+    shadow.add_argument("--evidence")
+    shadow.add_argument("--observation-id")
+    shadow.add_argument("--decision", choices=["RESOLVE", "ACCEPT_EXCEPTION"])
+    shadow.add_argument("--author-action-id")
+    shadow.add_argument("--reason")
+    shadow.add_argument("--legacy-final-root")
+    shadow.add_argument("--output")
+    cutover = sub.add_parser("cutover")
+    cutover.add_argument("action", choices=["plan", "preflight", "activate", "finish-prepared", "rollback-pre-authority"])
+    cutover.add_argument("--path", required=True)
+    cutover.add_argument("--credential", required=True)
+    cutover.add_argument("--dossier-id")
+    cutover.add_argument("--dossier-root")
+    cutover.add_argument("--legacy-final-root")
+    cutover.add_argument("--output")
+    cutover.add_argument("--legacy-state-root")
+    cutover.add_argument("--pointer-output")
+    cutover.add_argument("--transfer-id")
+    cutover.add_argument("--reason")
+    cutover.add_argument("--author-action-id")
     return parser
 
 
@@ -94,6 +199,11 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
             Path(args.source_state_root),
             Path(args.capture_root),
             Path(args.external_evidence_manifest) if args.external_evidence_manifest else None,
+        )
+    if args.command == "payload-delta":
+        return capture_payload_delta(
+            Path(args.capture_root), Path(args.baseline_payload_manifest),
+            Path(args.source_state_root), Path(args.output_root)
         )
     if args.command == "snapshot":
         return create_snapshot(Path(args.capture_root), Path(args.output))
@@ -144,6 +254,10 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
         if not args.source_root:
             raise PostOfficeError("PON_INPUT_INVALID", "migration replay requires --source-root")
         return replay_migration(Path(args.source_root), Path(args.output_root), plugin_root)
+    if args.command == "production":
+        return prepare_production_root(
+            Path(args.source_root), Path(args.output_root), Path(args.receipt), plugin_root
+        )
     if args.command == "kernel":
         if args.action == "credential-create":
             if not args.output or not args.capability_id:
@@ -167,12 +281,194 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
                 actor_kind=args.actor_kind, actor_role=args.actor_role,
                 mode=args.mode, plugin_root=plugin_root,
             )
+        if args.action == "actor-create":
+            if not all((args.credential, args.author_action_id, args.actor_id, args.actor_kind, args.actor_role)):
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "kernel actor-create requires --credential, --author-action-id, --actor-id, --actor-kind and --actor-role",
+                )
+            return create_kernel_actor(
+                Path(args.path), Path(args.credential), action_id=args.author_action_id,
+                actor_id=args.actor_id, actor_kind=args.actor_kind, actor_role=args.actor_role,
+                plugin_root=plugin_root,
+            )
+        if args.action == "credential-bind":
+            if not all((args.credential, args.output, args.author_action_id, args.actor_id,
+                        args.capability_id, args.subject_kind, args.subject_id, args.allowed_operations)):
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "kernel credential-bind requires --credential, --output, --author-action-id, --actor-id, --capability-id, --subject-kind, --subject-id and at least one --allow-operation",
+                )
+            return bind_kernel_credential(
+                Path(args.path), Path(args.credential), Path(args.output),
+                action_id=args.author_action_id, actor_id=args.actor_id,
+                capability_id=args.capability_id, subject_kind=args.subject_kind,
+                subject_id=args.subject_id, subject_generation=args.subject_generation,
+                allowed_operations=args.allowed_operations, expires_at=args.expires_at,
+                plugin_root=plugin_root,
+            )
         if not args.request or not args.credential:
             raise PostOfficeError(
                 "PON_INPUT_INVALID", "kernel execute requires --request and --credential"
             )
         return execute_operation(
             Path(args.path), Path(args.request), Path(args.credential), plugin_root
+        )
+    if args.command == "runtime":
+        if args.action == "reconcile":
+            observations = None
+            if args.observations:
+                observations = json.loads(Path(args.observations).read_text(encoding="utf-8"))
+            return reconcile_transport(Path(args.path), Path(args.credential), plugin_root, observations=observations)
+        if args.action == "claim":
+            return claim_next_transport(
+                Path(args.path), Path(args.credential), plugin_root, lease_seconds=args.lease_seconds
+            )
+        if not all((args.dispatch_id, args.lease_token, args.observable_marker, args.observed_receipt_id)):
+            raise PostOfficeError(
+                "PON_INPUT_INVALID",
+                "runtime complete requires --dispatch-id, --lease-token, --observable-marker and --observed-receipt-id",
+            )
+        return complete_transport(
+            Path(args.path), Path(args.credential), plugin_root,
+            dispatch_id=args.dispatch_id, lease_token=args.lease_token,
+            observable_marker=args.observable_marker, observed_receipt_id=args.observed_receipt_id,
+        )
+    if args.command == "reviews":
+        if args.action == "claim":
+            return claim_next_review(
+                Path(args.path), Path(args.credential), plugin_root,
+                reviewer_endpoint_id=args.reviewer_endpoint_id,
+            )
+        if not args.review_id:
+            raise PostOfficeError("PON_INPUT_INVALID", f"reviews {args.action} requires --review-id")
+        if args.action == "ensure":
+            if not all((args.semantic_message_id, args.requester_task_id, args.reviewer_endpoint_id, args.package_sha256)):
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "reviews ensure requires --semantic-message-id, --requester-task-id, --reviewer-endpoint-id and --package-sha256",
+                )
+            return ensure_automatic_review(
+                Path(args.path), Path(args.credential), plugin_root,
+                review_id=args.review_id, semantic_message_id=args.semantic_message_id,
+                requester_task_id=args.requester_task_id, reviewer_endpoint_id=args.reviewer_endpoint_id,
+                package_sha256=args.package_sha256,
+                minimum_interval_minutes=args.minimum_interval_minutes,
+            )
+        if args.action == "return":
+            if not args.result_message_id:
+                raise PostOfficeError("PON_INPUT_INVALID", "reviews return requires --result-message-id")
+            return return_automatic_review(
+                Path(args.path), Path(args.credential), plugin_root,
+                review_id=args.review_id, result_message_id=args.result_message_id,
+            )
+        if args.action == "status":
+            return status_automatic_review(
+                Path(args.path), Path(args.credential), plugin_root, review_id=args.review_id,
+            )
+        if args.action == "complete":
+            if not args.summary:
+                raise PostOfficeError("PON_INPUT_INVALID", "reviews complete requires --summary")
+            return complete_automatic_review(
+                Path(args.path), Path(args.credential), plugin_root,
+                review_id=args.review_id, summary=args.summary,
+            )
+        if not args.reason:
+            raise PostOfficeError("PON_INPUT_INVALID", "reviews withdraw requires --reason")
+        return withdraw_automatic_review(
+            Path(args.path), Path(args.credential), plugin_root,
+            review_id=args.review_id, reason=args.reason,
+        )
+    if args.command == "continuation":
+        if args.action == "reconcile":
+            return reconcile_continuations(Path(args.path), Path(args.credential), plugin_root)
+        if args.action == "claim":
+            return claim_next_continuation(
+                Path(args.path), Path(args.credential), plugin_root,
+                continuation_kind=args.kind, lease_seconds=args.lease_seconds,
+            )
+        if not all((args.continuation_id, args.lease_token, args.outcome)):
+            raise PostOfficeError(
+                "PON_INPUT_INVALID",
+                f"continuation {args.action} requires --continuation-id, --lease-token and --outcome",
+            )
+        outcome = json.loads(Path(args.outcome).read_text(encoding="utf-8"))
+        if args.action == "retire":
+            return retire_continuation(
+                Path(args.path), Path(args.credential), plugin_root,
+                continuation_id=args.continuation_id, lease_token=args.lease_token,
+                outcome=outcome,
+            )
+        return complete_continuation(
+            Path(args.path), Path(args.credential), plugin_root,
+            continuation_id=args.continuation_id, lease_token=args.lease_token, outcome=outcome,
+        )
+    if args.command == "shadow":
+        if args.action == "observe":
+            if not all((args.source_kind, args.source_reference, args.evidence)):
+                raise PostOfficeError("PON_INPUT_INVALID", "shadow observe requires --source-kind, --source-reference and --evidence")
+            evidence = json.loads(Path(args.evidence).read_text(encoding="utf-8"))
+            return record_shadow_observation(
+                Path(args.path), Path(args.credential), plugin_root,
+                source_kind=args.source_kind, source_reference=args.source_reference,
+                expected_root=args.expected_root, observed_root=args.observed_root, evidence=evidence,
+            )
+        if args.action == "decide":
+            if not all((args.observation_id, args.decision, args.author_action_id, args.reason)):
+                raise PostOfficeError("PON_INPUT_INVALID", "shadow decide requires --observation-id, --decision, --author-action-id and --reason")
+            return decide_shadow_observation(
+                Path(args.path), Path(args.credential), plugin_root,
+                observation_id=args.observation_id, decision=args.decision,
+                action_id=args.author_action_id, rationale=args.reason,
+            )
+        if args.action == "record-rehearsal":
+            if not args.evidence:
+                raise PostOfficeError("PON_INPUT_INVALID", "shadow record-rehearsal requires --evidence")
+            evidence = json.loads(Path(args.evidence).read_text(encoding="utf-8"))
+            return record_cutover_rehearsal(
+                Path(args.path), Path(args.credential), plugin_root, evidence=evidence,
+            )
+        if not args.legacy_final_root or not args.output:
+            raise PostOfficeError("PON_INPUT_INVALID", "shadow dossier requires --legacy-final-root and --output")
+        return create_cutover_dossier(
+            Path(args.path), Path(args.credential), plugin_root,
+            legacy_final_root=args.legacy_final_root, output=Path(args.output),
+        )
+    if args.command == "cutover":
+        if args.action == "plan":
+            if not args.legacy_final_root or not args.output:
+                raise PostOfficeError("PON_INPUT_INVALID", "cutover plan requires --legacy-final-root and --output")
+            return create_cutover_dossier(
+                Path(args.path), Path(args.credential), plugin_root,
+                legacy_final_root=args.legacy_final_root, output=Path(args.output),
+            )
+        if args.action == "preflight":
+            if not args.dossier_id or not args.dossier_root:
+                raise PostOfficeError("PON_INPUT_INVALID", "cutover preflight requires --dossier-id and --dossier-root")
+            return cutover_preflight(
+                Path(args.path), Path(args.credential), plugin_root,
+                dossier_id=args.dossier_id, dossier_root=args.dossier_root,
+            )
+        if args.action == "finish-prepared":
+            if not args.transfer_id:
+                raise PostOfficeError("PON_INPUT_INVALID", "cutover finish-prepared requires --transfer-id")
+            return finish_prepared_cutover(
+                Path(args.path), Path(args.credential), plugin_root, transfer_id=args.transfer_id,
+            )
+        if args.action == "rollback-pre-authority":
+            if not args.transfer_id or not args.author_action_id or not args.reason:
+                raise PostOfficeError("PON_INPUT_INVALID", "cutover rollback-pre-authority requires --transfer-id, --author-action-id and --reason")
+            return rollback_pre_authority(
+                Path(args.path), Path(args.credential), plugin_root,
+                transfer_id=args.transfer_id, action_id=args.author_action_id, reason=args.reason,
+            )
+        if not all((args.dossier_id, args.dossier_root, args.legacy_state_root, args.pointer_output, args.author_action_id)):
+            raise PostOfficeError("PON_INPUT_INVALID", "cutover activate requires --dossier-id, --dossier-root, --legacy-state-root, --pointer-output and --author-action-id")
+        return execute_cutover(
+            Path(args.path), Path(args.credential), plugin_root,
+            dossier_id=args.dossier_id, dossier_root=args.dossier_root,
+            legacy_state_root=Path(args.legacy_state_root), pointer_output=Path(args.pointer_output),
+            action_id=args.author_action_id,
         )
     raise PostOfficeError("PON_INPUT_INVALID", "Unsupported command")
 

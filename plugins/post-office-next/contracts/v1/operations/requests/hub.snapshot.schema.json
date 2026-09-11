@@ -115,7 +115,7 @@
   ],
   "title": "hub.snapshot request",
   "type": "object",
-  "x-contractStatus": "IMPLEMENTED_P0_P1",
+  "x-contractStatus": "IMPLEMENTED_P3_6",
   "x-minimumAuthority": "authenticated-reader",
   "x-mutates": false
 }

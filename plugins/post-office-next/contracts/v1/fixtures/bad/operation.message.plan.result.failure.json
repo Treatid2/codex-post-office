@@ -10,6 +10,7 @@
   "ok": false,
   "operation": "message.plan",
   "receipt": {
+    "mutationEventId": "PON-EVENT-001",
     "receiptId": "PON-RECEIPT-001",
     "recordedAt": "2026-09-04T12:00:00Z",
     "requestSha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",

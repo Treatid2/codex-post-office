@@ -8,15 +8,20 @@
       "aggregateVersion": 0,
       "beforeRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
       "createdIds": [],
+      "eventId": "PON-EVENT-001",
       "ok": true,
       "operation": "hub.reconcile.preview",
       "receipt": {
+        "mutationEventId": "PON-EVENT-001",
         "receiptId": "PON-RECEIPT-001",
         "recordedAt": "2026-09-04T12:00:00Z",
         "requestSha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
         "stateRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
       },
       "requestId": "PON-REQUEST-001",
+      "resource": {
+        "state": "VALID"
+      },
       "schemaVersion": "1",
       "warnings": []
     },
@@ -58,7 +63,10 @@
         "afterRoot",
         "createdIds",
         "warnings",
-        "receipt"
+        "receipt",
+        "resource",
+        "eventId",
+        "aggregateVersion"
       ],
       "type": "object"
     },
@@ -110,6 +118,7 @@
                 "PON_CONTRACT_FIXTURE_UNEXPECTED",
                 "PON_CONTRACT_INVALID",
                 "PON_CREDENTIAL_INVALID",
+                "PON_CUSTODY_NOT_VERIFIED",
                 "PON_DATABASE_INVALID",
                 "PON_IDEMPOTENCY_CONFLICT",
                 "PON_INPUT_INVALID",
@@ -118,11 +127,13 @@
                 "PON_KERNEL_NOT_BOOTSTRAPPED",
                 "PON_LEGACY_SCHEMA_UNSUPPORTED",
                 "PON_MIGRATION_MISMATCH",
+                "PON_OBSERVATION_MISMATCH",
                 "PON_OPERATION_NOT_IMPLEMENTED",
                 "PON_OUTPUT_EXISTS",
                 "PON_PATH_CONFLICT",
                 "PON_PATH_NOT_FOUND",
                 "PON_PRODUCTION_MUTATION_FORBIDDEN",
+                "PON_RATE_LIMITED",
                 "PON_RECONCILIATION_AMBIGUOUS",
                 "PON_RECONCILIATION_DUPLICATE",
                 "PON_RECONCILIATION_HASH_MISMATCH",
@@ -213,6 +224,7 @@
             "PON_CONTRACT_FIXTURE_UNEXPECTED",
             "PON_CONTRACT_INVALID",
             "PON_CREDENTIAL_INVALID",
+            "PON_CUSTODY_NOT_VERIFIED",
             "PON_DATABASE_INVALID",
             "PON_IDEMPOTENCY_CONFLICT",
             "PON_INPUT_INVALID",
@@ -221,11 +233,13 @@
             "PON_KERNEL_NOT_BOOTSTRAPPED",
             "PON_LEGACY_SCHEMA_UNSUPPORTED",
             "PON_MIGRATION_MISMATCH",
+            "PON_OBSERVATION_MISMATCH",
             "PON_OPERATION_NOT_IMPLEMENTED",
             "PON_OUTPUT_EXISTS",
             "PON_PATH_CONFLICT",
             "PON_PATH_NOT_FOUND",
             "PON_PRODUCTION_MUTATION_FORBIDDEN",
+            "PON_RATE_LIMITED",
             "PON_RECONCILIATION_AMBIGUOUS",
             "PON_RECONCILIATION_DUPLICATE",
             "PON_RECONCILIATION_HASH_MISMATCH",
@@ -314,7 +328,8 @@
         "receiptId",
         "requestSha256",
         "recordedAt",
-        "stateRoot"
+        "stateRoot",
+        "mutationEventId"
       ],
       "type": "object"
     },
@@ -322,6 +337,12 @@
       "minLength": 1,
       "pattern": "^[A-Za-z][A-Za-z0-9._:-]{2,127}$",
       "type": "string"
+    },
+    "resource": {
+      "additionalProperties": true,
+      "properties": {},
+      "required": [],
+      "type": "object"
     },
     "schemaVersion": {
       "const": "1"
@@ -338,6 +359,7 @@
               "PON_CONTRACT_FIXTURE_UNEXPECTED",
               "PON_CONTRACT_INVALID",
               "PON_CREDENTIAL_INVALID",
+              "PON_CUSTODY_NOT_VERIFIED",
               "PON_DATABASE_INVALID",
               "PON_IDEMPOTENCY_CONFLICT",
               "PON_INPUT_INVALID",
@@ -346,11 +368,13 @@
               "PON_KERNEL_NOT_BOOTSTRAPPED",
               "PON_LEGACY_SCHEMA_UNSUPPORTED",
               "PON_MIGRATION_MISMATCH",
+              "PON_OBSERVATION_MISMATCH",
               "PON_OPERATION_NOT_IMPLEMENTED",
               "PON_OUTPUT_EXISTS",
               "PON_PATH_CONFLICT",
               "PON_PATH_NOT_FOUND",
               "PON_PRODUCTION_MUTATION_FORBIDDEN",
+              "PON_RATE_LIMITED",
               "PON_RECONCILIATION_AMBIGUOUS",
               "PON_RECONCILIATION_DUPLICATE",
               "PON_RECONCILIATION_HASH_MISMATCH",
@@ -407,7 +431,9 @@
   ],
   "title": "hub.reconcile.preview result",
   "type": "object",
-  "x-contractStatus": "IMPLEMENTED_P0_P1",
-  "x-invariants": [],
-  "x-mutates": false
+  "x-contractStatus": "IMPLEMENTED_P3_6",
+  "x-invariants": [
+    "For mutating success, receipt.mutationEventId equals eventId"
+  ],
+  "x-mutates": true
 }

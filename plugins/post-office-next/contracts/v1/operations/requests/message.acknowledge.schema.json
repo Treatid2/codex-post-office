@@ -202,7 +202,7 @@
   ],
   "title": "message.acknowledge request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_4",
   "x-minimumAuthority": "recipient",
   "x-mutates": true
 }

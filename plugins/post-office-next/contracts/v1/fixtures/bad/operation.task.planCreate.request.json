@@ -4,13 +4,22 @@
     "kind": "HUMAN",
     "role": "browser"
   },
+  "aggregate": {
+    "expectedVersion": 0,
+    "id": "PON-AGGREGATE-001",
+    "type": "Example"
+  },
   "authority": {
+    "authorityGrantId": "PON-GRANT-001",
     "capabilityId": "PON-CAPABILITY-001"
   },
   "operation": "task.planCreate",
   "parameters": {
+    "acceptanceContractRoot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "authorityGrantId": "PON-EXAMPLE-001",
     "objective": "example",
     "projectId": "PON-EXAMPLE-001",
+    "taskId": "PON-EXAMPLE-001",
     "taskKind": "example"
   },
   "schemaVersion": "1"

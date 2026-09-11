@@ -1,6 +1,18 @@
 {
   "afterRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
   "aggregateVersion": 0,
+  "authorization": {
+    "activeCapabilityIds": [
+      "PON-CAPABILITY-001"
+    ],
+    "activeGrantIds": [],
+    "actorId": "PON-ACTOR-001",
+    "actorStatus": "ACTIVE",
+    "capabilityAllowed": true,
+    "decision": "CAPABILITY_ALLOWED",
+    "implemented": true,
+    "proposedOperation": "hub.status"
+  },
   "beforeRoot": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
   "createdIds": [],
   "ok": true,

@@ -28,6 +28,11 @@ from .diagnostics import PostOfficeError
 HUB_SCHEMA_VERSION = 12
 AUTO_REVIEW_SCHEMA_VERSION = 10
 OBSERVER_SCHEMA_VERSION = 1
+SUPPORTED_LEGACY_SCHEMA_VERSIONS = {
+    "hub": frozenset({12, 19}),
+    "autoReview": frozenset({10, 17}),
+    "observer": frozenset({1, 2}),
+}
 EXCLUDED_STATE_PREFIXES = (
     "backups/",
     "browser-observer/",
@@ -73,11 +78,10 @@ def _validate_legacy_versions(hub: sqlite3.Connection, observer: sqlite3.Connect
         "autoReview": int(_metadata_value(hub, "auto_review_schema_version") or -1),
         "observer": int(_metadata_value(observer, "schema_version") or -1) if observer else None,
     }
-    expected = {"hub": HUB_SCHEMA_VERSION, "autoReview": AUTO_REVIEW_SCHEMA_VERSION, "observer": OBSERVER_SCHEMA_VERSION}
     mismatches = {
-        name: {"expected": expected[name], "actual": value}
+        name: {"supported": sorted(SUPPORTED_LEGACY_SCHEMA_VERSIONS[name]), "actual": value}
         for name, value in versions.items()
-        if value is not None and value != expected[name]
+        if value is not None and value not in SUPPORTED_LEGACY_SCHEMA_VERSIONS[name]
     }
     if mismatches:
         raise PostOfficeError("PON_LEGACY_SCHEMA_UNSUPPORTED", "Legacy schema version is not supported", {"mismatches": mismatches})

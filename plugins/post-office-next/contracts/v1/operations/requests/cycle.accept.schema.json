@@ -162,7 +162,7 @@
   ],
   "title": "cycle.accept request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_4",
   "x-minimumAuthority": "author",
   "x-mutates": true
 }

@@ -196,7 +196,7 @@
   ],
   "title": "task.create request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_3",
   "x-minimumAuthority": "author-or-delegated-browser",
   "x-mutates": true
 }

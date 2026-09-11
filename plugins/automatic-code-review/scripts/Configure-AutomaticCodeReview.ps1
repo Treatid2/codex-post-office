@@ -44,9 +44,15 @@ try {
     $backend = Resolve-RegularFile $BackendEntrypoint 'Review backend'
     $backendDependency = Resolve-RegularFile (Join-Path (Split-Path $backend -Parent) 'codex_comms.py') 'Review backend dependency'
     $state = [IO.Path]::GetFullPath($StateRoot)
-    $database = Join-Path $state 'hub.sqlite3'
-    if (-not (Test-Path -LiteralPath $database -PathType Leaf)) {
-        throw "Post Office database does not exist: $database"
+    $databaseCandidates = @(
+        (Join-Path $state 'post-office-next.sqlite3'),
+        (Join-Path $state 'hub.sqlite3')
+    )
+    $database = $databaseCandidates |
+        Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+        Select-Object -First 1
+    if (-not $database) {
+        throw "Post Office database does not exist. Checked: $($databaseCandidates -join ', ')"
     }
 
     $pythonDirectory = Split-Path $python -Parent
@@ -68,6 +74,7 @@ try {
         backendEntrypoint = $backend
         backendFiles = $backendFiles
         stateRoot = $state
+        stateDatabase = [IO.Path]::GetFileName($database)
         createdAt = [DateTime]::UtcNow.ToString('o')
     }
 
@@ -92,6 +99,7 @@ try {
         pythonFileCount = $runtimeFiles.Count
         backendFileCount = $backendFiles.Count
         stateDatabasePresent = $true
+        stateDatabase = [IO.Path]::GetFileName($database)
     } | ConvertTo-Json -Depth 4 -Compress
 }
 catch {

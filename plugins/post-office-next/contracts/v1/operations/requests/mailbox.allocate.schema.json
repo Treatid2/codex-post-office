@@ -196,7 +196,7 @@
   ],
   "title": "mailbox.allocate request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_2",
   "x-minimumAuthority": "author-or-delegated-browser",
   "x-mutates": true
 }

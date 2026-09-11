@@ -12,6 +12,7 @@
     "bundle": {
       "bundleVersion": 1,
       "canonicalFilename": "example",
+      "id": "PON-EXAMPLE-001",
       "manifestRoot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "payloads": [
         {

@@ -31,6 +31,9 @@ DIAGNOSTICS: dict[str, dict[str, Any]] = {
     "PON_IDEMPOTENCY_CONFLICT": {"severity": "ERROR", "retryable": False},
     "PON_OPERATION_NOT_IMPLEMENTED": {"severity": "ERROR", "retryable": False},
     "PON_CONCURRENCY_CONFLICT": {"severity": "ERROR", "retryable": True},
+    "PON_CUSTODY_NOT_VERIFIED": {"severity": "ERROR", "retryable": False},
+    "PON_OBSERVATION_MISMATCH": {"severity": "ERROR", "retryable": False},
+    "PON_RATE_LIMITED": {"severity": "WARNING", "retryable": True},
     "PON_INTERNAL_ERROR": {"severity": "ERROR", "retryable": False},
 }
 

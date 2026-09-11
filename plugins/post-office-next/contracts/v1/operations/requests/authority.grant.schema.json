@@ -267,7 +267,7 @@
   ],
   "title": "authority.grant request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_2",
   "x-minimumAuthority": "author",
   "x-mutates": true
 }

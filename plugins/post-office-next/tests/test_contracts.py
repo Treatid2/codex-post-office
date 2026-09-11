@@ -65,12 +65,13 @@ class ContractTests(unittest.TestCase):
     def test_minimum_read_operations_are_present(self) -> None:
         operations = build_operation_specs()
         for required in (
-            "hub.status", "hub.snapshot", "hub.reconcile.preview", "authority.inspect",
+            "hub.status", "hub.snapshot", "authority.inspect",
             "project.read", "task.read", "package.read", "interface.read",
             "capabilityRequest.read", "transport.inspect", "provisioning.inspect", "attention.list",
         ):
             self.assertIn(required, operations)
             self.assertFalse(operations[required]["mutates"])
+        self.assertTrue(operations["hub.reconcile.preview"]["mutates"])
 
     def test_task_schema_expresses_one_package_invariant(self) -> None:
         task = build_entity_schemas()["task"]

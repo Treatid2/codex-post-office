@@ -112,7 +112,7 @@
   ],
   "title": "task.read request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_3",
   "x-minimumAuthority": "authenticated-reader",
   "x-mutates": false
 }

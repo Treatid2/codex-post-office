@@ -206,7 +206,7 @@
   ],
   "title": "task.review request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_3",
   "x-minimumAuthority": "browser",
   "x-mutates": true
 }

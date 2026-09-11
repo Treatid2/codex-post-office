@@ -249,7 +249,7 @@
   ],
   "title": "capabilityRequest.create request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_4",
   "x-minimumAuthority": "project-manager",
   "x-mutates": true
 }

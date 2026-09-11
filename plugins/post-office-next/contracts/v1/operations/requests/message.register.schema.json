@@ -286,7 +286,7 @@
   ],
   "title": "message.register request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_4",
   "x-minimumAuthority": "courier",
   "x-mutates": true
 }

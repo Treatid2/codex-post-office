@@ -396,12 +396,12 @@ def _semantic_message_input() -> dict[str, Any]:
 
 def _bundle_input() -> dict[str, Any]:
     return obj(
-        {"semanticMessageId": identifier(), "canonicalFilename": safe_filename(),
+        {"id": identifier(), "semanticMessageId": identifier(), "canonicalFilename": safe_filename(),
          "bundleVersion": {"type": "integer", "minimum": 1}, "sizeBytes": {"type": "integer", "minimum": 0},
          "sha256": sha256(), "manifestRoot": sha256(),
          "payloads": array(obj({"path": safe_relative_path(), "sizeBytes": {"type": "integer", "minimum": 0},
                                 "sha256": sha256()}, ["path", "sizeBytes", "sha256"]), minimum=1)},
-        ["semanticMessageId", "canonicalFilename", "bundleVersion", "sizeBytes", "sha256", "manifestRoot", "payloads"],
+        ["id", "semanticMessageId", "canonicalFilename", "bundleVersion", "sizeBytes", "sha256", "manifestRoot", "payloads"],
     )
 
 
@@ -414,17 +414,13 @@ def _nonempty_object(properties: dict[str, Any]) -> dict[str, Any]:
 READ_OPERATIONS = {
     "hub.status": ([], {"includeDetails": {"type": "boolean"}}),
     "hub.snapshot": ([], {"domains": array(identifier()), "includeFileHashes": {"type": "boolean"}}),
-    "hub.reconcile.preview": (["snapshotRoot"], {"snapshotRoot": sha256(), "assertionSetIds": array(identifier())}),
     "authority.inspect": (["actorId", "proposedOperation"], {"actorId": identifier(), "proposedOperation": string()}),
     "project.read": (["projectId"], {"projectId": identifier()}),
-    "project.planCreate": (["projectCode"], {"projectCode": identifier(), "displayName": string(), "kind": string()}),
     "task.read": (["taskId"], {"taskId": identifier()}),
-    "task.planCreate": (["projectId", "taskKind", "objective"], {"projectId": identifier(), "taskKind": string(), "objective": string(), "mutablePackageIds": array(identifier(), maximum=1)}),
     "package.read": (["packageId"], {"packageId": identifier()}),
     "package.rehome.preview": (["packageId", "destinationProjectId"], {"packageId": identifier(), "destinationProjectId": identifier()}),
     "interface.read": (["interfaceId"], {"interfaceId": identifier(), "version": string()}),
     "capabilityRequest.read": (["capabilityRequestId"], {"capabilityRequestId": identifier()}),
-    "message.plan": (["semanticMessage", "bundle"], {"semanticMessage": _semantic_message_input(), "bundle": _bundle_input()}),
     "bundle.verify": (["bundle"], {"bundle": _bundle_input()}),
     "transport.inspect": (["semanticMessageId"], {"semanticMessageId": identifier()}),
     "provisioning.inspect": (["provisioningPlanId"], {"provisioningPlanId": identifier()}),
@@ -433,6 +429,7 @@ READ_OPERATIONS = {
 
 
 MUTATION_OPERATIONS = {
+    "hub.reconcile.preview": (["snapshotRoot"], {"snapshotRoot": sha256(), "assertionSetIds": array(identifier())}),
     "authority.grant": (["grant"], {"grant": obj(
         {"grantorId": identifier(), "recipientId": identifier(), "allowedOperations": array(string(), minimum=1),
          "scope": _scope_input(), "classification": string(enum=["ONE_SHOT", "STANDING"]),
@@ -440,6 +437,14 @@ MUTATION_OPERATIONS = {
          "sourceDecisionId": identifier()},
         ["grantorId", "recipientId", "allowedOperations", "scope", "classification", "rationale", "sourceDecisionId"]) }),
     "authority.revoke": (["grantId", "reason"], {"grantId": identifier(), "reason": string()}),
+    "project.planCreate": (
+        ["projectId", "projectCode", "displayName", "kind", "localProjectRoot", "localCasRoot", "localBackupRoot", "mailDomains"],
+        {
+            "projectId": identifier(), "projectCode": identifier(), "displayName": string(), "kind": string(),
+            "localProjectRoot": string(), "localCasRoot": string(), "localBackupRoot": string(),
+            "mailDomains": array(identifier(), minimum=1), "policyRoot": sha256(),
+        },
+    ),
     "project.create": (["approvedPlanId", "planRoot"], {"approvedPlanId": identifier(), "planRoot": sha256()}),
     "project.update": (["projectId", "changes"], {"projectId": identifier(), "changes": _nonempty_object(
         {"displayName": string(), "policyRoot": sha256(), "mailDomains": array(identifier(), minimum=1)})}),
@@ -469,6 +474,14 @@ MUTATION_OPERATIONS = {
         ["id", "requestingProjectId", "problem", "requiredBehaviour", "acceptanceFixtureRoot", "priority"])}),
     "capabilityRequest.triage": (["capabilityRequestId", "outcome", "rationale"], {"capabilityRequestId": identifier(), "outcome": string(enum=["MATCH_EXISTING", "CHANGE_EXISTING", "ADAPTER_REQUIRED", "NEW_PACKAGE_REQUIRED", "FGPM_CORE_ISSUE", "HUB_ISSUE", "DEFERRED", "REJECTED"]), "rationale": string()}),
     "capabilityRequest.fulfil": (["capabilityRequestId", "outcome", "evidenceRoots"], {"capabilityRequestId": identifier(), "outcome": string(enum=["FULFILLED", "PARTIAL", "WITHDRAWN"]), "evidenceRoots": array(sha256(), minimum=1)}),
+    "task.planCreate": (
+        ["taskId", "projectId", "taskKind", "objective", "acceptanceContractRoot", "authorityGrantId"],
+        {
+            "taskId": identifier(), "projectId": identifier(), "taskKind": string(), "objective": string(),
+            "acceptanceContractRoot": sha256(), "authorityGrantId": identifier(),
+            "mutablePackageIds": array(identifier(), maximum=1),
+        },
+    ),
     "task.create": (["approvedPlanId", "planRoot"], {"approvedPlanId": identifier(), "planRoot": sha256()}),
     "task.bindEndpoint": (["taskId", "endpointId", "mailboxGeneration"], {"taskId": identifier(), "endpointId": identifier(), "mailboxGeneration": {"type": "integer", "minimum": 1}}),
     "task.activate": (["taskId"], {"taskId": identifier()}),
@@ -487,11 +500,12 @@ MUTATION_OPERATIONS = {
          "testResults": array(obj({"name": string(), "status": string(enum=["PASSED", "FAILED", "SKIPPED"]),
                                          "evidenceRoot": sha256()}, ["name", "status"]))},
         ["id", "projectId", "parentGenerationId", "packageRoots", "interfaceVersions", "configurationRoot", "testResults"])}),
-    "endpoint.allocate": (["projectId", "role", "accessScope"], {"projectId": identifier(), "taskId": identifier(), "role": string(), "accessScope": _scope_input()}),
+    "endpoint.allocate": (["projectId", "role", "accessScope"], {"projectId": identifier(), "taskId": identifier(), "role": string(), "actorKind": string(enum=["BROWSER", "COURIER", "ENDPOINT", "SYSTEM"]), "accessScope": _scope_input()}),
     "endpoint.revoke": (["endpointId", "reason"], {"endpointId": identifier(), "reason": string()}),
     "mailbox.allocate": (["endpointId", "domain"], {"endpointId": identifier(), "domain": identifier()}),
     "mailbox.rotateGeneration": (["mailboxId", "reason"], {"mailboxId": identifier(), "reason": string()}),
     "contextBundle.build": (["taskId", "sourceInventory"], {"taskId": identifier(), "sourceInventory": array(obj({"reference": string(), "sha256": sha256(), "access": string(enum=["READ_ONLY", "MUTABLE"])}, ["reference", "sha256", "access"]), minimum=1)}),
+    "message.plan": (["semanticMessage", "bundle"], {"semanticMessage": _semantic_message_input(), "bundle": _bundle_input()}),
     "message.register": (["semanticMessage", "bundleId"], {"semanticMessage": _semantic_message_input(), "bundleId": identifier()}),
     "message.route": (["semanticMessageId", "bundleId", "destinationMailboxId", "destinationGeneration"], {"semanticMessageId": identifier(), "bundleId": identifier(), "destinationMailboxId": identifier(), "destinationGeneration": {"type": "integer", "minimum": 1}}),
     "message.acknowledge": (["semanticMessageId", "payloadHashes"], {"semanticMessageId": identifier(), "payloadHashes": array(sha256(), minimum=1)}),
@@ -551,6 +565,45 @@ LOCAL_EXTENSION_OPERATIONS = {
     "task.bindEndpoint",
     "task.read",
 }
+P3_2_OPERATIONS = {
+    "authority.inspect",
+    "authority.grant",
+    "authority.revoke",
+    "endpoint.allocate",
+    "endpoint.revoke",
+    "mailbox.allocate",
+    "mailbox.rotateGeneration",
+}
+P3_2_IMPLEMENTED_OPERATIONS = sorted(P3_2_OPERATIONS | {"hub.status"})
+P3_3_OPERATIONS = {
+    "project.planCreate", "project.create", "project.read", "project.update",
+    "project.pause", "project.archive", "task.planCreate", "task.create", "task.read",
+    "task.bindEndpoint", "task.activate", "task.block", "task.moveProject",
+    "task.recordResponse", "task.review", "task.close", "provisioning.inspect",
+}
+P3_3_IMPLEMENTED_OPERATIONS = sorted(P3_2_OPERATIONS | P3_3_OPERATIONS | {"hub.status"})
+P3_4_OPERATIONS = {
+    "package.read", "package.register", "package.registerVersion", "package.rehome.preview",
+    "package.rehome", "package.deprecate", "interface.read", "interface.register",
+    "interface.deprecate", "capabilityRequest.read", "capabilityRequest.create",
+    "capabilityRequest.triage", "capabilityRequest.fulfil", "changeSet.create",
+    "changeSet.addTask", "changeSet.startIntegration", "changeSet.decide", "integration.record",
+    "contextBundle.build", "message.plan", "message.register", "message.route",
+    "message.acknowledge", "message.review", "message.close",
+    "bundle.verify", "bundle.supersedeBeforeRegistration", "cycle.open",
+    "cycle.markAwaitingReview", "cycle.accept", "cycle.close",
+}
+P3_4_IMPLEMENTED_OPERATIONS = sorted(P3_2_OPERATIONS | P3_3_OPERATIONS | P3_4_OPERATIONS | {"hub.status"})
+P3_5_OPERATIONS = {
+    "transport.inspect", "transport.retry", "transport.quarantine",
+    "transport.tombstoneDuplicate", "attention.list",
+}
+P3_5_IMPLEMENTED_OPERATIONS = sorted(P3_2_OPERATIONS | P3_3_OPERATIONS | P3_4_OPERATIONS | P3_5_OPERATIONS | {"hub.status"})
+P3_6_OPERATIONS = {"hub.snapshot", "hub.reconcile.preview", "hub.reconcile.apply"}
+P3_6_IMPLEMENTED_OPERATIONS = sorted(
+    P3_2_OPERATIONS | P3_3_OPERATIONS | P3_4_OPERATIONS | P3_5_OPERATIONS
+    | P3_6_OPERATIONS | {"hub.status"}
+)
 
 
 def build_operation_specs() -> dict[str, dict[str, Any]]:
@@ -564,10 +617,18 @@ def build_operation_specs() -> dict[str, dict[str, Any]]:
                 "minimumAuthority": MINIMUM_AUTHORITIES[operation],
                 "parameters": obj(properties, required),
                 "contractStatus": (
-                    "IMPLEMENTED_P0_P1"
-                    if operation in {"hub.snapshot", "hub.reconcile.preview"}
+                    "IMPLEMENTED_P3_6"
+                    if operation in P3_6_OPERATIONS
                     else "IMPLEMENTED_P3_1"
                     if operation == "hub.status"
+                    else "IMPLEMENTED_P3_2"
+                    if operation in P3_2_OPERATIONS
+                    else "IMPLEMENTED_P3_3"
+                    if operation in P3_3_OPERATIONS
+                    else "IMPLEMENTED_P3_4"
+                    if operation in P3_4_OPERATIONS
+                    else "IMPLEMENTED_P3_5"
+                    if operation in P3_5_OPERATIONS
                     else "CONTRACT_ONLY"
                 ),
                 "catalogueSource": "POST_OFFICE_NEXT_EXTENSION" if operation in LOCAL_EXTENSION_OPERATIONS else "FGPM_WISHLIST",
@@ -704,6 +765,7 @@ def build_result_schema(operation: str, spec: dict[str, Any]) -> dict[str, Any]:
                 "instanceId": identifier(),
                 "mode": string(enum=["ISOLATED", "SHADOW"]),
                 "status": string(enum=["READY", "SEALED"]),
+                "authorityState": string(enum=["PREVIEW", "AUTHORITATIVE", "RETIRED"]),
                 "contractRoot": sha256(),
                 "databaseUserVersion": {"type": "integer", "minimum": 1},
                 "eventCount": {"type": "integer", "minimum": 0},
@@ -712,11 +774,62 @@ def build_result_schema(operation: str, spec: dict[str, Any]) -> dict[str, Any]:
                 "implementedOperations": array(string(), minimum=1),
             },
             [
-                "instanceId", "mode", "status", "contractRoot", "databaseUserVersion",
+                "instanceId", "mode", "status", "authorityState", "contractRoot", "databaseUserVersion",
                 "eventCount", "lastEventId", "idempotencyRecordCountBeforeRequest",
                 "implementedOperations",
             ],
         )
+    if operation == "authority.inspect":
+        properties["authorization"] = obj(
+            {
+                "actorId": identifier(),
+                "actorStatus": string(enum=["ACTIVE", "REVOKED", "RETIRED", "NOT_FOUND"]),
+                "proposedOperation": string(),
+                "implemented": {"type": "boolean"},
+                "capabilityAllowed": {"type": "boolean"},
+                "activeCapabilityIds": array(identifier()),
+                "activeGrantIds": array(identifier()),
+                "decision": string(enum=["CAPABILITY_ALLOWED", "DENIED"]),
+            },
+            [
+                "actorId", "actorStatus", "proposedOperation", "implemented",
+                "capabilityAllowed", "activeCapabilityIds", "activeGrantIds", "decision",
+            ],
+        )
+    if operation in {"project.planCreate", "task.planCreate", "provisioning.inspect"}:
+        properties["provisioningPlan"] = obj(
+            {
+                "id": identifier(), "aggregateType": string(enum=["Project", "Task"]),
+                "aggregateId": identifier(), "authorityId": identifier(),
+                "requestedResources": array(string()), "planRoot": sha256(),
+                "stage": string(enum=["PLAN", "AUTHORISED", "IDS_RESERVED", "EXTERNAL_PENDING", "VERIFIED", "COMMITTED", "READY", "COMPENSATING", "ROLLED_BACK", "ORPHANED_REVIEW"]),
+                "payload": obj({}, (), True),
+            },
+            ["id", "aggregateType", "aggregateId", "authorityId", "requestedResources", "planRoot", "stage", "payload"],
+        )
+    if operation in {"project.read", "project.create", "project.update", "project.pause", "project.archive"}:
+        properties["project"] = obj(
+            {
+                "id": identifier(), "code": identifier(), "displayName": string(), "kind": string(),
+                "status": string(enum=["PROPOSED", "PROVISIONING", "ACTIVE", "PAUSED", "PROVISIONING_FAILED", "ARCHIVED"]),
+                "localProjectRoot": string(), "localCasRoot": string(), "localBackupRoot": string(),
+                "mailDomains": array(identifier(), minimum=1), "policyRoot": sha256(),
+            },
+            ["id", "code", "displayName", "kind", "status", "localProjectRoot", "localCasRoot", "localBackupRoot", "mailDomains"],
+        )
+    if operation in {"task.read", "task.create", "task.bindEndpoint", "task.activate", "task.block", "task.moveProject", "task.recordResponse", "task.review", "task.close"}:
+        properties["task"] = obj(
+            {
+                "id": identifier(), "projectId": identifier(), "taskKind": string(), "objective": string(),
+                "mutablePackageId": {"type": ["string", "null"]}, "acceptanceContractRoot": sha256(),
+                "authorityGrantId": identifier(),
+                "state": string(enum=["PROPOSED", "TRIAGED", "AWAITING_AUTHORITY", "PROVISIONING", "READY", "ACTIVE", "BLOCKED", "RESPONSE_RETURNED", "UNDER_REVIEW", "ACCEPTED", "CORRECTION_REQUIRED", "REJECTED", "CLOSED", "CANCELLED"]),
+                "endpointBinding": {"type": ["object", "null"]},
+            },
+            ["id", "projectId", "taskKind", "objective", "mutablePackageId", "acceptanceContractRoot", "authorityGrantId", "state", "endpointBinding"],
+        )
+    if operation in {"hub.snapshot", "hub.reconcile.preview", "package.read", "package.rehome.preview", "interface.read", "capabilityRequest.read", "bundle.verify", "transport.inspect", "attention.list"}:
+        properties["resource"] = obj({}, (), True)
     example = {"schemaVersion": "1", "requestId": "PON-REQUEST-001", "operation": operation, "ok": True,
                "beforeRoot": "sha256:" + "1" * 64, "afterRoot": "sha256:" + "1" * 64,
                "aggregateVersion": 0, "createdIds": [], "warnings": [],
@@ -729,13 +842,52 @@ def build_result_schema(operation: str, spec: dict[str, Any]) -> dict[str, Any]:
             "instanceId": "PON-KERNEL",
             "mode": "ISOLATED",
             "status": "READY",
+            "authorityState": "PREVIEW",
             "contractRoot": "sha256:" + "3" * 64,
-            "databaseUserVersion": 3,
+            "databaseUserVersion": 7,
             "eventCount": 0,
             "lastEventId": None,
             "idempotencyRecordCountBeforeRequest": 0,
-            "implementedOperations": ["hub.status"],
+            "implementedOperations": P3_6_IMPLEMENTED_OPERATIONS,
         }
+    if operation == "authority.inspect":
+        success_required.append("authorization")
+        example["authorization"] = {
+            "actorId": "PON-ACTOR-001",
+            "actorStatus": "ACTIVE",
+            "proposedOperation": "hub.status",
+            "implemented": True,
+            "capabilityAllowed": True,
+            "activeCapabilityIds": ["PON-CAPABILITY-001"],
+            "activeGrantIds": [],
+            "decision": "CAPABILITY_ALLOWED",
+        }
+    if operation in {"project.planCreate", "task.planCreate", "provisioning.inspect"}:
+        success_required.append("provisioningPlan")
+        example["provisioningPlan"] = {
+            "id": "PON-PLAN-001", "aggregateType": "Project", "aggregateId": "PON-PROJECT-001",
+            "authorityId": "PON-GRANT-001", "requestedResources": ["project:PON-PROJECT-001"],
+            "planRoot": "sha256:" + "4" * 64, "stage": "PLAN", "payload": {},
+        }
+    if operation in {"project.read", "project.create", "project.update", "project.pause", "project.archive"}:
+        success_required.append("project")
+        example["project"] = {
+            "id": "PON-PROJECT-001", "code": "DEMO", "displayName": "Demo", "kind": "LOCAL",
+            "status": "ACTIVE", "localProjectRoot": "L:/Codex/projects/demo",
+            "localCasRoot": "L:/Codex/cas/demo", "localBackupRoot": "L:/Codex/backups/demo",
+            "mailDomains": ["DEMO"],
+        }
+    if operation in {"task.read", "task.create", "task.bindEndpoint", "task.activate", "task.block", "task.moveProject", "task.recordResponse", "task.review", "task.close"}:
+        success_required.append("task")
+        example["task"] = {
+            "id": "PON-TASK-001", "projectId": "PON-PROJECT-001", "taskKind": "PROJECT_MANAGEMENT",
+            "objective": "Example objective", "mutablePackageId": None,
+            "acceptanceContractRoot": "sha256:" + "5" * 64, "authorityGrantId": "PON-GRANT-001",
+            "state": "ACTIVE", "endpointBinding": None,
+        }
+    if operation in {"hub.snapshot", "hub.reconcile.preview", "package.read", "package.rehome.preview", "interface.read", "capabilityRequest.read", "bundle.verify", "transport.inspect", "attention.list"}:
+        success_required.append("resource")
+        example["resource"] = {"state": "VALID"}
     if spec["mutates"]:
         success_required.extend(["eventId", "aggregateVersion"])
         example["eventId"] = "PON-EVENT-001"

@@ -112,7 +112,7 @@
   ],
   "title": "transport.inspect request",
   "type": "object",
-  "x-contractStatus": "CONTRACT_ONLY",
+  "x-contractStatus": "IMPLEMENTED_P3_5",
   "x-minimumAuthority": "authenticated-reader",
   "x-mutates": false
 }
