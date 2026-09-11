@@ -135,8 +135,17 @@ async function retainVerifiedCollection(temporaryPath, attemptRoot, transport, m
   };
 }
 
-async function captureConversationMetadata(page, threadUrl) {
-  const responsePromise = page.waitForResponse((response) => {
+async function captureConversationMetadata(page, context, threadUrl) {
+  const metadataUrl = `https://chatgpt.com/backend-api/conversations/${threadId}`;
+  let directPayload = null;
+  try {
+    const directResponse = await context.request.get(metadataUrl, {
+      headers: { referer: threadUrl },
+      timeout: Math.min(timeoutMs, 30_000),
+    });
+    if (directResponse.ok()) directPayload = await directResponse.json();
+  } catch { /* retain the page-response fallback below */ }
+  const responsePromise = directPayload ? null : page.waitForResponse((response) => {
     try {
       const url = new URL(response.url());
       return url.origin === "https://chatgpt.com" &&
@@ -149,6 +158,7 @@ async function captureConversationMetadata(page, threadUrl) {
   } else {
     await page.goto(threadUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
   }
+  if (directPayload) return directPayload;
   try {
     return await (await responsePromise).json();
   } catch (error) {
@@ -346,7 +356,7 @@ async function main() {
   });
   if (!page) page = context.pages()[0] ?? await context.newPage();
   const threadUrl = `https://chatgpt.com/c/${threadId}`;
-  const conversationPayload = await captureConversationMetadata(page, threadUrl);
+  const conversationPayload = await captureConversationMetadata(page, context, threadUrl);
   await page.waitForLoadState("domcontentloaded", { timeout: timeoutMs });
   const current = new URL(page.url());
   if (current.origin !== "https://chatgpt.com" || current.pathname !== `/c/${threadId}`) {
