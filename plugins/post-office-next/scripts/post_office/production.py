@@ -51,6 +51,103 @@ COURIER_OPERATIONS = [
 ]
 
 
+def production_status(database: Path, plugin_root: Path) -> dict[str, Any]:
+    """Return a secret-free operational snapshot suitable for bounded sweeps."""
+    inspection = inspect_database(database, plugin_root)
+    con = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
+    con.row_factory = sqlite3.Row
+    try:
+        kernel = con.execute(
+            "SELECT mode,status,authority_state,contract_root,bootstrapped_at "
+            "FROM kernel_instances WHERE instance_id='PON-KERNEL'"
+        ).fetchone()
+
+        def grouped(table: str, column: str) -> dict[str, int]:
+            return {
+                str(row[0]): int(row[1])
+                for row in con.execute(
+                    f"SELECT {column},COUNT(*) FROM {table} GROUP BY {column} ORDER BY {column}"
+                )
+            }
+
+        oldest = con.execute(
+            """SELECT continuation_id,continuation_kind,state,created_at,lease_expires_at
+               FROM continuation_items
+               WHERE state IN ('READY','LEASED')
+               ORDER BY created_at,continuation_id LIMIT 1"""
+        ).fetchone()
+        transfer = con.execute(
+            """SELECT transfer_id,state,committed_at,pointer_path
+               FROM authority_transfers ORDER BY COALESCE(committed_at,''),transfer_id DESC LIMIT 1"""
+        ).fetchone()
+        reviewers = [
+            {
+                "threadId": str(row["reviewer_thread_id"]),
+                "label": str(row["label"]),
+                "state": str(row["status"]),
+                "lastSubmissionAt": row["last_submission_at"],
+            }
+            for row in con.execute(
+                "SELECT reviewer_thread_id,label,status,last_submission_at "
+                "FROM reviewer_instances ORDER BY rotation_order"
+            )
+        ]
+        historical_classifications = {
+            "MESSAGE_STATE_MAPPING",
+            "RAW_ONLY_NOT_PROJECTED_P2_1",
+        }
+        migration_rows = [
+            {"classification": str(row[0]), "state": str(row[1]), "count": int(row[2])}
+            for row in con.execute(
+                "SELECT classification,resolution_state,COUNT(*) FROM migration_anomalies "
+                "GROUP BY classification,resolution_state ORDER BY classification,resolution_state"
+            )
+        ]
+        open_historical = sum(
+            row["count"] for row in migration_rows
+            if row["state"] == "OPEN" and row["classification"] in historical_classifications
+        )
+        open_actionable = sum(
+            row["count"] for row in migration_rows
+            if row["state"] == "OPEN" and row["classification"] not in historical_classifications
+        )
+        return {
+            "ok": True,
+            "database": str(database.resolve()),
+            "kernel": dict(kernel) if kernel else None,
+            "authorityTransfer": dict(transfer) if transfer else None,
+            "queues": {
+                "messages": grouped("semantic_messages", "state"),
+                "dispatches": grouped("transport_dispatches", "state"),
+                "reviews": grouped("automatic_reviews", "state"),
+                "continuations": grouped("continuation_items", "state"),
+                "attention": grouped("attention_items", "state"),
+                "migrationAnomalies": grouped("migration_anomalies", "resolution_state"),
+            },
+            "oldestContinuityWork": dict(oldest) if oldest else None,
+            "migrationEvidence": {
+                "actionableOpenCount": open_actionable,
+                "historicalOpenCount": open_historical,
+                "knownHistoricalClassifications": sorted(historical_classifications),
+                "byClassificationAndState": migration_rows,
+            },
+            "reviewers": reviewers,
+            "backupReceiptCount": int(
+                con.execute("SELECT COUNT(*) FROM backup_receipts").fetchone()[0]
+            ),
+            "unexpectedDriveAccessCount": int(
+                con.execute(
+                    "SELECT COALESCE(SUM(access_count),0) FROM drive_access_metrics WHERE purpose='UNEXPECTED'"
+                ).fetchone()[0]
+            ),
+            "latestEvent": inspection["database"]["eventBoundary"],
+            "logicalStateRoot": inspection["logicalStateRoot"],
+            "secretsIncluded": False,
+        }
+    finally:
+        con.close()
+
+
 def _copy_import(source_root: Path, output_root: Path) -> Path:
     source_root = source_root.resolve(strict=True)
     output_root = output_root.resolve(strict=False)

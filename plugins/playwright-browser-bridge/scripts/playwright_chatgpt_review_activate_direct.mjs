@@ -86,6 +86,23 @@ async function findSubmittedTurn(page) {
   return sourceMessageId;
 }
 
+async function waitForSubmittedTurn(page, timeout) {
+  const deadline = Date.now() + Math.max(timeout, 0);
+  do {
+    const sourceMessageId = await findSubmittedTurn(page);
+    if (sourceMessageId) return sourceMessageId;
+    if (Date.now() >= deadline) return null;
+    await page.waitForTimeout(Math.min(500, deadline - Date.now()));
+  } while (true);
+}
+
+async function composerStillContainsMarker(composer) {
+  return composer.evaluate((element, expected) => {
+    const value = "value" in element ? element.value : element.textContent;
+    return typeof value === "string" && value.includes(expected);
+  }, marker());
+}
+
 try {
   await validateManifest();
   if (!/^ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/[A-Za-z0-9-]+$/.test(cdpEndpoint)) {
@@ -124,9 +141,16 @@ try {
     while (!await send.isEnabled() && Date.now() < deadline) await page.waitForTimeout(500);
     if (!await send.isEnabled()) throw new Error("ChatGPT send action did not become enabled");
     await send.click({ force: true, timeout: timeoutMs });
-    await page.locator('[data-message-id]').filter({ hasText: marker() }).first()
-      .waitFor({ state: "attached", timeout: timeoutMs });
-    sourceMessageId = await findSubmittedTurn(page);
+    sourceMessageId = await waitForSubmittedTurn(page, Math.min(5_000, timeoutMs));
+    if (!sourceMessageId && await composerStillContainsMarker(composer)) {
+      // ChatGPT occasionally accepts the synthetic button click without
+      // submitting the controlled editor. Enter exercises the composer's
+      // normal keyboard path, but only while the exact unsent marker remains.
+      // If the editor already cleared we wait instead, preventing a duplicate.
+      await composer.press("Enter", { timeout: timeoutMs });
+      sendStrategy = `${sendStrategy}+enter-fallback`;
+    }
+    sourceMessageId ??= await waitForSubmittedTurn(page, Math.max(0, deadline - Date.now()));
   }
   if (!sourceMessageId) throw new Error("Submitted review activation marker was not observed");
   console.log(JSON.stringify({

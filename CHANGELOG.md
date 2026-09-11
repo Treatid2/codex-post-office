@@ -4,6 +4,15 @@ All notable changes to this repository will be documented here.
 
 ## Unreleased
 
+- Corrected the P3 cutover review findings: all secondary message-state changes now receive
+  aggregate metadata and journal events; prepared cutover writes are durably fenced; revoked
+  destinations are not materialized or claimed; continuation lease recovery is evidence-based;
+  privileged author paths reject expired credentials; and automatic-review requests use the
+  retained task capability and standing grant without manufacturing human authority.
+- Added secret-free production status and retained a verified post-cutover backup/restore proof.
+- Hardened direct Playwright upload and submission with native-file-input and exact-marker-gated
+  Enter fallbacks plus regression tests.
+
 - Built the P3.1 isolated operational kernel with fail-closed capability authentication, exact
   actor binding, default-deny dispatch, durable request-id idempotency, aggregate compare-and-swap
   and hash-chained event primitives, plus the first callable `hub.status` operation.

@@ -117,7 +117,10 @@ The manifest binds one ChatGPT conversation UUID, mailbox generation, message ID
 verified before navigation. The bridge navigates only to `https://chatgpt.com/c/<uuid>`, uploads the
 files, and prefixes the message with `POST-OFFICE-PLAYWRIGHT-DISPATCH <dispatch-id>`. On retry it
 finds that exact marker and returns the retained receipt without sending a duplicate. Post Office
-records the receipt only after the marker is visible in the bound conversation.
+records the receipt only after the marker is visible in the bound conversation. Upload first uses
+the page's native file input when present, with the visible upload menu/file chooser as a bounded
+fallback. If a synthetic send-button click leaves the exact marker in the composer, one Enter-key
+fallback is allowed; it is suppressed once the composer clears or the submitted marker appears.
 
 P2.4 discovers the composer by enabled, editable textbox capability exposed through the browser's
 accessibility semantics. Native `textarea` and editable surfaces are bounded fallbacks; submission

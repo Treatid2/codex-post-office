@@ -39,7 +39,7 @@ from .runtime import (
     withdraw_automatic_review,
 )
 from .migration import import_legacy_capture, replay_migration
-from .production import prepare_production_root
+from .production import prepare_production_root, production_status
 from .payloads import capture_payload_delta
 from .reconciliation import reconcile_preview
 from .snapshot import create_snapshot
@@ -109,10 +109,11 @@ def _parser() -> argparse.ArgumentParser:
     migration.add_argument("--source-root")
     migration.add_argument("--output-root", required=True)
     production = sub.add_parser("production")
-    production.add_argument("action", choices=["prepare"])
-    production.add_argument("--source-root", required=True)
-    production.add_argument("--output-root", required=True)
-    production.add_argument("--receipt", required=True)
+    production.add_argument("action", choices=["prepare", "status"])
+    production.add_argument("--path")
+    production.add_argument("--source-root")
+    production.add_argument("--output-root")
+    production.add_argument("--receipt")
     kernel = sub.add_parser("kernel")
     kernel.add_argument("action", choices=["credential-create", "credential-bind", "actor-create", "bootstrap", "inspect", "execute"])
     kernel.add_argument("--path")
@@ -170,6 +171,7 @@ def _parser() -> argparse.ArgumentParser:
     continuation.add_argument("--continuation-id")
     continuation.add_argument("--lease-token")
     continuation.add_argument("--outcome")
+    continuation.add_argument("--observations")
     shadow = sub.add_parser("shadow")
     shadow.add_argument("action", choices=["observe", "decide", "record-rehearsal", "dossier"])
     shadow.add_argument("--path", required=True)
@@ -281,6 +283,16 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
             raise PostOfficeError("PON_INPUT_INVALID", "migration replay requires --source-root")
         return replay_migration(Path(args.source_root), Path(args.output_root), plugin_root)
     if args.command == "production":
+        if args.action == "status":
+            if not args.path:
+                raise PostOfficeError("PON_INPUT_INVALID", "production status requires --path", {})
+            return production_status(Path(args.path), plugin_root)
+        if not all((args.source_root, args.output_root, args.receipt)):
+            raise PostOfficeError(
+                "PON_INPUT_INVALID",
+                "production prepare requires --source-root, --output-root and --receipt",
+                {},
+            )
         return prepare_production_root(
             Path(args.source_root), Path(args.output_root), Path(args.receipt), plugin_root
         )
@@ -437,7 +449,12 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
         )
     if args.command == "continuation":
         if args.action == "reconcile":
-            return reconcile_continuations(Path(args.path), Path(args.credential), plugin_root)
+            observations = None
+            if args.observations:
+                observations = json.loads(Path(args.observations).read_text(encoding="utf-8"))
+            return reconcile_continuations(
+                Path(args.path), Path(args.credential), plugin_root, observations=observations
+            )
         if args.action == "claim":
             return claim_next_continuation(
                 Path(args.path), Path(args.credential), plugin_root,

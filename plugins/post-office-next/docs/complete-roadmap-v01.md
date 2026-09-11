@@ -59,6 +59,8 @@ P4 is driven by observed operational needs and does not reopen or weaken the cut
 Delivered increments: migrated claims expose normalized destinations; obsolete work can be retired
 without fabricating completion; and an exact, already-delivered migrated message can receive an
 idempotent supplemental direct-transport receipt without rewriting its original fallback history.
+The operator status command now reports this state without credentials or secrets. Expired
+continuation leases require performed-or-absent evidence; ambiguous expiry is held for attention.
 
 ### P4.2 — transport reliability proof
 
@@ -80,6 +82,11 @@ Delivered increment: a backup-first migration-history re-attestation command rep
 digest-only drift when versions, names, the complete schema, integrity checks, and foreign keys all
 match. It refuses drifted migrations containing data-changing or destructive SQL and retains the
 pre-repair database plus an immutable receipt. Full forward upgrade rehearsal remains outstanding.
+
+The authoritative Treatid2 deployment also retains a verified local database backup and a
+separately restored, root-matching copy. General forward schema migration remains deliberately
+unimplemented until a real migration exists to rehearse; current-version backup/restore is not
+mislabelled as an upgrade.
 
 ### P4.4 — public release hardening
 

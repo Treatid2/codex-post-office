@@ -99,25 +99,53 @@ async function markerExists(page) {
     .filter({ hasText: marker() }).count() > 0;
 }
 
+async function waitForSubmittedMarker(page, timeout) {
+  const deadline = Date.now() + Math.max(timeout, 0);
+  do {
+    if (await markerExists(page)) return true;
+    if (Date.now() >= deadline) return false;
+    await page.waitForTimeout(Math.min(500, deadline - Date.now()));
+  } while (true);
+}
+
+async function composerStillContainsMarker(composer) {
+  return composer.evaluate((element, expected) => {
+    const value = "value" in element ? element.value : element.textContent;
+    return typeof value === "string" && value.includes(expected);
+  }, marker());
+}
+
 async function setAttachments(page) {
   const paths = manifest.attachments.map((item) => path.resolve(item.path));
+  const fileInput = page.locator('input[type="file"]').first();
+  const setNativeFileInput = async () => {
+    if (await fileInput.count() === 0) return false;
+    await fileInput.setInputFiles(paths, { timeout: timeoutMs });
+    return true;
+  };
   const add = page.locator([
     'button[data-testid="composer-plus-btn"]',
     'button[aria-label="Add files and more"]',
     'button[aria-label="Attach files"]',
   ].join(", ")).first();
   await add.waitFor({ state: "attached", timeout: timeoutMs });
-  const upload = page.getByText(/^(Upload from computer|Upload files|Add photos & files)$/).first();
-  await add.hover({ force: true, timeout: timeoutMs });
-  await page.waitForTimeout(500);
-  if (await upload.count() === 0) {
+  let attached = await setNativeFileInput();
+  if (!attached) {
     await add.click({ force: true, timeout: timeoutMs });
+    await page.waitForTimeout(250);
+    attached = await setNativeFileInput();
   }
-  await upload.waitFor({ state: "attached", timeout: timeoutMs });
-  const chooserPromise = page.waitForEvent("filechooser", { timeout: timeoutMs });
-  await upload.click({ force: true, timeout: timeoutMs });
-  const chooser = await chooserPromise;
-  await chooser.setFiles(paths, { timeout: timeoutMs });
+  if (!attached) {
+    const upload = page.getByRole("menuitem")
+      .filter({ hasText: /^(Upload from computer|Upload files|Add photos & files)$/ })
+      .or(page.getByText(/^(Upload from computer|Upload files|Add photos & files)$/))
+      .first();
+    await upload.waitFor({ state: "attached", timeout: timeoutMs });
+    const chooserPromise = page.waitForEvent("filechooser", { timeout: timeoutMs });
+    await upload.click({ force: true, timeout: timeoutMs });
+    const chooser = await chooserPromise;
+    await chooser.setFiles(paths, { timeout: timeoutMs });
+  }
   for (const attachment of manifest.attachments) {
     await page.getByText(attachment.sourceName, { exact: true }).first()
       .waitFor({ state: "attached", timeout: timeoutMs });
@@ -167,8 +195,13 @@ try {
       throw new Error("ChatGPT send action did not become enabled after attachment processing");
     }
     await send.click({ force: true, timeout: timeoutMs });
-    await page.locator('[data-message-id]').filter({ hasText: marker() }).first()
-      .waitFor({ state: "attached", timeout: timeoutMs });
+    let submitted = await waitForSubmittedMarker(page, Math.min(5_000, timeoutMs));
+    if (!submitted && await composerStillContainsMarker(composer)) {
+      await composer.press("Enter", { timeout: timeoutMs });
+      sendStrategy = `${sendStrategy}+enter-fallback`;
+    }
+    submitted ||= await waitForSubmittedMarker(page, Math.max(0, sendDeadline - Date.now()));
+    if (!submitted) throw new Error("Submitted delivery marker was not observed");
   }
   console.log(JSON.stringify({
     ok: true,

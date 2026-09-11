@@ -22,13 +22,15 @@ browser/CDP authority, and the browser bridge owns no mail, review, or authorisa
 
 ## Current maturity
 
-This is a **cutover candidate**, not a hosted service or an OpenAI-supported distribution.
+This is an **authoritative local deployment with post-cutover hardening in progress**, not a hosted
+service or an OpenAI-supported distribution.
 
 - The post-office-next plugin implements P0 through P3.6: evidence capture, deterministic
   import/replay/restore, authenticated semantic workflows, local transport/review continuity,
   production preparation, shadow validation, and an exact-dossier authority transfer.
-- Production activation remains deliberately unavailable until a clean final capture, matching
-  replay and restore, retained continuation proof, exact dossier, and explicit author action pass.
+- The Treatid2 deployment completed its exact one-time authority transfer on 11 September 2026.
+  Installing this source elsewhere does not activate a Post Office: each deployment still requires
+  its own verified preparation, dossier, and explicit author action.
 - automatic-code-review is a portable, fail-closed client for a separately deployed compatible
   backend. Its trusted administrator must generate a local deployment lock before use.
 - playwright-browser-bridge is operational on supported Windows hosts for idempotent ChatGPT
@@ -77,6 +79,8 @@ component.
 - The default review browser is a dedicated profile, not the user's everyday Chrome profile.
 - Raw Playwright/CDP endpoints remain loopback-only and are never exposed through a public tunnel.
 - Author acceptance and production cutover always require explicit authority.
+- An expired lease is ambiguous until external evidence proves completion or absence; expiry alone
+  never authorises a resend.
 
 ## Documentation
 

@@ -101,7 +101,9 @@ def _contract_root(plugin_root: Path) -> str:
     return str(validation["contractRoot"])
 
 
-def _open_writer(database_path: Path, plugin_root: Path) -> sqlite3.Connection:
+def _open_writer(
+    database_path: Path, plugin_root: Path, *, allow_prepared_cutover: bool = False
+) -> sqlite3.Connection:
     database_path = require_outside_protected_roots(database_path.resolve(strict=True))
     con = sqlite3.connect(database_path.as_uri() + "?mode=rw", uri=True, timeout=30)
     try:
@@ -112,6 +114,14 @@ def _open_writer(database_path: Path, plugin_root: Path) -> sqlite3.Connection:
         validate_operational_connection(con, plugin_root)
         _validate_hub_event_chain(con)
         _validate_kernel_projections(con)
+        if not allow_prepared_cutover and con.execute(
+            "SELECT 1 FROM authority_transfers WHERE state='PREPARED' LIMIT 1"
+        ).fetchone():
+            raise PostOfficeError(
+                "PON_CONCURRENCY_CONFLICT",
+                "A prepared authority transfer fences all ordinary writes until it is finished or rolled back",
+                {"reason": "PREPARED_CUTOVER_FENCE"},
+            )
         return con
     except Exception:
         if con.in_transaction:
@@ -214,6 +224,10 @@ def bind_kernel_credential(
                 str(author_capability["secret_sha256"]),
                 sha256_bytes(author_credential["secret"].encode("utf-8")),
             )
+            or (
+                author_capability["expires_at"]
+                and _parse_timestamp(author_capability["expires_at"]) <= datetime.now(timezone.utc)
+            )
             or not author or author["actor_kind"] != "HUMAN" or author["role"] != "author"
             or author["status"] != "ACTIVE"
         ):
@@ -297,6 +311,7 @@ def create_kernel_actor(
         author = con.execute("SELECT * FROM actors WHERE actor_id=?", (capability["actor_id"],)).fetchone() if capability else None
         if (not capability or capability["status"] != "ACTIVE"
                 or not hmac.compare_digest(str(capability["secret_sha256"]), sha256_bytes(credential["secret"].encode("utf-8")))
+                or (capability["expires_at"] and _parse_timestamp(capability["expires_at"]) <= datetime.now(timezone.utc))
                 or not author or author["actor_kind"] != "HUMAN" or author["role"] != "author" or author["status"] != "ACTIVE"):
             raise PostOfficeError("PON_AUTHORIZATION_DENIED", "Actor creation requires the authenticated human author", {})
         if con.execute("SELECT 1 FROM actors WHERE actor_id=?", (actor_id,)).fetchone():
@@ -2611,6 +2626,15 @@ def _execute_mutation(
         version = _aggregate_position(con, aggregate_type="TransportAttempt", aggregate_id=attempt_id, current_root=before_root)
         _require_aggregate(request, aggregate_type="TransportAttempt", aggregate_id=attempt_id, actual_version=version, actual_root=before_root)
         message = con.execute("SELECT * FROM semantic_messages WHERE message_id=?", (row["message_id"],)).fetchone()
+        message_before_root = _aggregate_root(
+            "SemanticMessage", message["message_id"], _message_state(con, message)
+        )
+        message_version = _aggregate_position(
+            con,
+            aggregate_type="SemanticMessage",
+            aggregate_id=message["message_id"],
+            current_root=message_before_root,
+        )
         basis = _prepare_mutation_authority(
             con, request=request, capability=capability, request_hash=request_hash,
             recorded_at=recorded_at,
@@ -2652,12 +2676,42 @@ def _execute_mutation(
         updated = con.execute("SELECT * FROM transport_attempts WHERE transport_attempt_id=?", (attempt_id,)).fetchone()
         updated_dispatch = con.execute("SELECT * FROM transport_dispatches WHERE transport_attempt_id=?", (attempt_id,)).fetchone()
         after_root = _aggregate_root("TransportAttempt", attempt_id, _transport_state(updated, updated_dispatch))
-        return _finalize_mutation(
+        result = _finalize_mutation(
             con, request=request, capability=capability, basis=basis, request_hash=request_hash,
             recorded_at=recorded_at, before_root=before_root, after_root=after_root,
             aggregate_version=version + 1, created_ids=[event_result["nextTransportAttemptId"]] if operation == "transport.retry" else [],
             event_result=event_result,
         )
+        changed_message = con.execute(
+            "SELECT * FROM semantic_messages WHERE message_id=?", (message["message_id"],)
+        ).fetchone()
+        message_after_root = _aggregate_root(
+            "SemanticMessage", message["message_id"], _message_state(con, changed_message)
+        )
+        if message_after_root != message_before_root:
+            con.execute(
+                "UPDATE semantic_messages SET aggregate_version=?,aggregate_root=? WHERE message_id=?",
+                (message_version + 1, message_after_root.removeprefix("sha256:"), message["message_id"]),
+            )
+            message_event = append_hub_event(
+                con,
+                request=request,
+                capability_id=capability["capability_id"],
+                aggregate_version=message_version + 1,
+                before_root=message_before_root,
+                after_root=message_after_root,
+                event_result={
+                    "state": changed_message["state"],
+                    "transportAttemptId": attempt_id,
+                    "sideEffectOfEventId": result["eventId"],
+                },
+                occurred_at=recorded_at,
+                aggregate_type="SemanticMessage",
+                aggregate_id=message["message_id"],
+            )
+            result["messageEventId"] = message_event["eventId"]
+            result["receipt"]["stateRoot"] = _operational_state(con)["operationalStateRoot"]
+        return result
 
     if operation == "authority.grant":
         aggregate_type = "AuthorityGrant"

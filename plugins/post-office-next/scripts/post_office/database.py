@@ -380,6 +380,12 @@ def reattest_migration_history(
                 or not hmac.compare_digest(
                     str(capability["secret_sha256"]), sha256_bytes(credential["secret"].encode("utf-8"))
                 )
+                or (
+                    capability["expires_at"]
+                    and datetime.fromisoformat(
+                        str(capability["expires_at"]).replace("Z", "+00:00")
+                    ) <= datetime.now(timezone.utc)
+                )
                 or not actor
                 or actor["actor_id"] != instance["bootstrap_actor_id"]
                 or actor["actor_kind"] != "HUMAN"
@@ -424,6 +430,14 @@ def reattest_migration_history(
         try:
             writer.execute("PRAGMA foreign_keys=ON")
             writer.execute("BEGIN IMMEDIATE")
+            if writer.execute(
+                "SELECT 1 FROM authority_transfers WHERE state='PREPARED' LIMIT 1"
+            ).fetchone():
+                raise PostOfficeError(
+                    "PON_CONCURRENCY_CONFLICT",
+                    "A prepared authority transfer fences migration-history writes",
+                    {"reason": "PREPARED_CUTOVER_FENCE"},
+                )
             locked = _migration_history_reattest_preflight(writer, database_path, plugin_root)
             if locked["actual"] != before["actual"] or locked["logicalContentsRoot"] != before["logicalContentsRoot"]:
                 raise PostOfficeError(

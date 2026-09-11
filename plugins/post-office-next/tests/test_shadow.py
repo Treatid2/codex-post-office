@@ -17,6 +17,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from post_office.database import initialize_database  # noqa: E402
+from post_office.diagnostics import PostOfficeError  # noqa: E402
 from post_office.kernel import (  # noqa: E402
     bootstrap_kernel,
     create_kernel_actor,
@@ -145,6 +146,17 @@ class ShadowCutoverTests(unittest.TestCase):
                 self.assertEqual(con.execute("SELECT authority_state FROM kernel_instances").fetchone()[0], "PREVIEW")
             finally:
                 con.close()
+            with self.assertRaisesRegex(PostOfficeError, "prepared authority transfer fences"):
+                record_shadow_observation(
+                    database,
+                    credential,
+                    PLUGIN_ROOT,
+                    source_kind="LIVE_PROJECTION",
+                    source_reference="must-be-fenced",
+                    expected_root="a" * 64,
+                    observed_root="a" * 64,
+                    evidence={"bounded": True},
+                )
             recovered = finish_prepared_cutover(
                 database, credential, PLUGIN_ROOT, transfer_id=transfer_id,
             )

@@ -7,6 +7,7 @@ import json
 import os
 import sqlite3
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ from .kernel import (
     _credential,
     _open_writer,
     _operational_state,
+    _parse_timestamp,
     _timestamp,
     append_hub_event,
 )
@@ -62,6 +64,10 @@ def _actor(con: sqlite3.Connection, credential_path: Path, *, author_only: bool 
         not capability or capability["status"] != "ACTIVE"
         or not hmac.compare_digest(
             str(capability["secret_sha256"]), sha256_bytes(credential["secret"].encode("utf-8"))
+        )
+        or (
+            capability["expires_at"]
+            and _parse_timestamp(capability["expires_at"]) <= datetime.now(timezone.utc)
         )
         or not actor or actor["status"] != "ACTIVE" or actor["actor_kind"] not in allowed_kinds
         or (author_only and actor["role"] != "author")
@@ -429,7 +435,7 @@ def finish_prepared_cutover(
 ) -> dict[str, Any]:
     """Finish the exact prepared transfer after an interruption following pointer publication."""
     inspect_database(database_path, plugin_root)
-    con = _open_writer(database_path, plugin_root)
+    con = _open_writer(database_path, plugin_root, allow_prepared_cutover=True)
     try:
         capability, actor = _actor(con, credential_path, author_only=True)
         event = _finish_prepared_transfer(con, capability, actor, transfer_id)
@@ -476,7 +482,7 @@ def rollback_pre_authority(
     database_path: Path, credential_path: Path, plugin_root: Path, *, transfer_id: str,
     action_id: str, reason: str,
 ) -> dict[str, Any]:
-    con = _open_writer(database_path, plugin_root)
+    con = _open_writer(database_path, plugin_root, allow_prepared_cutover=True)
     try:
         capability, actor = _actor(con, credential_path, author_only=True)
         transfer = con.execute("SELECT * FROM authority_transfers WHERE transfer_id=?", (transfer_id,)).fetchone()

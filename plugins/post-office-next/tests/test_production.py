@@ -12,7 +12,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
 from post_office.database import initialize_database, inspect_database
-from post_office.production import prepare_production_root
+from post_office.production import prepare_production_root, production_status
 
 
 class ProductionPreparationTests(unittest.TestCase):
@@ -36,6 +36,13 @@ class ProductionPreparationTests(unittest.TestCase):
             self.assertNotIn('"secret":', json.dumps(receipt))
             self.assertTrue((prepared / "caller-secrets" / "author.token").is_file())
             self.assertTrue((prepared / "caller-secrets" / "courier.token").is_file())
+            status = production_status(prepared / "post-office-next.sqlite3", PLUGIN_ROOT)
+            self.assertEqual(status["kernel"]["authority_state"], "PREVIEW")
+            self.assertEqual(status["backupReceiptCount"], 0)
+            self.assertEqual(status["migrationEvidence"]["actionableOpenCount"], 0)
+            self.assertEqual(status["migrationEvidence"]["historicalOpenCount"], 0)
+            self.assertFalse(status["secretsIncluded"])
+            self.assertNotIn('"secret"', json.dumps(status))
 
 
 if __name__ == "__main__":

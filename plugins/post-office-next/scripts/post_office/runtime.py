@@ -63,6 +63,37 @@ def _destination_from_scope(scope: dict[str, Any]) -> dict[str, str | None]:
     }
 
 
+def _destination_is_active(
+    con: sqlite3.Connection,
+    *,
+    endpoint_id: str | None,
+    mailbox_id: str | None,
+    generation: int | None,
+) -> bool:
+    """Require the exact retained destination identity to remain active.
+
+    A revoked endpoint, mailbox generation, or endpoint actor is held for explicit
+    reconciliation.  The courier must never silently retarget durable mail.
+    """
+    if not endpoint_id or not mailbox_id or generation is None:
+        return False
+    row = con.execute(
+        """SELECT e.status AS endpoint_status,m.status AS mailbox_status,
+                  a.status AS actor_status
+           FROM endpoints e
+           JOIN mailboxes m ON m.endpoint_id=e.endpoint_id
+           LEFT JOIN actors a ON a.actor_id=e.actor_id
+           WHERE e.endpoint_id=? AND m.mailbox_id=? AND m.generation=?""",
+        (endpoint_id, mailbox_id, generation),
+    ).fetchone()
+    return bool(
+        row
+        and row["endpoint_status"] == "ACTIVE"
+        and row["mailbox_status"] == "ACTIVE"
+        and row["actor_status"] == "ACTIVE"
+    )
+
+
 def _continuation_destination(
     con: sqlite3.Connection, payload: dict[str, Any]
 ) -> dict[str, str | int | None]:
@@ -191,7 +222,27 @@ def reconcile_transport(
                 continue
             message = con.execute("SELECT * FROM semantic_messages WHERE message_id=?", (attempt["message_id"],)).fetchone()
             mailbox = con.execute("SELECT * FROM mailboxes WHERE mailbox_id=? AND generation=?", (message["recipient_mailbox_id"], message["recipient_generation"])).fetchone()
-            endpoint = con.execute("SELECT * FROM endpoints WHERE endpoint_id=?", (mailbox["endpoint_id"],)).fetchone()
+            endpoint = con.execute("SELECT * FROM endpoints WHERE endpoint_id=?", (mailbox["endpoint_id"],)).fetchone() if mailbox else None
+            if not mailbox or not endpoint or not _destination_is_active(
+                con,
+                endpoint_id=endpoint["endpoint_id"] if endpoint else None,
+                mailbox_id=message["recipient_mailbox_id"],
+                generation=int(message["recipient_generation"]),
+            ):
+                attention_ids.append(_attention(
+                    con,
+                    entity_type="TransportAttempt",
+                    entity_id=attempt["transport_attempt_id"],
+                    severity="ERROR",
+                    reason_code="PON_DESTINATION_INACTIVE",
+                    details={
+                        "endpointId": endpoint["endpoint_id"] if endpoint else None,
+                        "mailboxId": message["recipient_mailbox_id"],
+                        "generation": int(message["recipient_generation"]),
+                    },
+                    recorded_at=now,
+                ))
+                continue
             bundle = con.execute("SELECT * FROM message_bundles WHERE bundle_id=?", (attempt["bundle_id"],)).fetchone()
             payloads = list(con.execute("SELECT * FROM bundle_payloads WHERE bundle_id=? ORDER BY ordinal", (bundle["bundle_id"],)))
             missing = [
@@ -263,13 +314,46 @@ def claim_next_transport(
     try:
         capability, actor = _courier(con, credential_path)
         now = _timestamp()
-        dispatch = con.execute(
-            "SELECT * FROM transport_dispatches WHERE state='READY' AND next_attempt_at<=? ORDER BY created_at,dispatch_id LIMIT 1",
+        dispatch = None
+        held: list[str] = []
+        for candidate in con.execute(
+            "SELECT * FROM transport_dispatches WHERE state='READY' AND next_attempt_at<=? ORDER BY created_at,dispatch_id",
             (now,),
-        ).fetchone()
+        ):
+            if _destination_is_active(
+                con,
+                endpoint_id=candidate["destination_endpoint_id"],
+                mailbox_id=candidate["destination_mailbox_id"],
+                generation=int(candidate["destination_generation"]),
+            ):
+                dispatch = candidate
+                break
+            con.execute(
+                """UPDATE transport_dispatches
+                   SET state='RECONCILIATION_REQUIRED',last_error_code='PON_DESTINATION_INACTIVE',updated_at=?
+                   WHERE dispatch_id=? AND state='READY'""",
+                (now, candidate["dispatch_id"]),
+            )
+            _attention(
+                con,
+                entity_type="TransportDispatch",
+                entity_id=candidate["dispatch_id"],
+                severity="ERROR",
+                reason_code="PON_DESTINATION_INACTIVE",
+                details={
+                    "endpointId": candidate["destination_endpoint_id"],
+                    "mailboxId": candidate["destination_mailbox_id"],
+                    "generation": int(candidate["destination_generation"]),
+                },
+                recorded_at=now,
+            )
+            held.append(str(candidate["dispatch_id"]))
         if not dispatch:
-            con.rollback()
-            return {"ok": True, "available": False}
+            if held:
+                con.commit()
+            else:
+                con.rollback()
+            return {"ok": True, "available": False, "heldDispatchIds": held}
         token = secrets.token_urlsafe(32)
         expires = (datetime.now(timezone.utc) + timedelta(seconds=lease_seconds)).isoformat().replace("+00:00", "Z")
         con.execute(
@@ -551,7 +635,22 @@ def ensure_automatic_review(
         if message["project_id"] != task["project_id"]:
             raise PostOfficeError("PON_INPUT_INVALID", "Review request is outside the requester task project", {})
         reviewer_actor = con.execute("SELECT * FROM actors WHERE actor_id=?", (reviewer["actor_id"],)).fetchone()
-        if not reviewer_actor or reviewer_actor["actor_kind"] != "BROWSER":
+        reviewer_mailbox = con.execute(
+            "SELECT * FROM mailboxes WHERE mailbox_id=? AND generation=?",
+            (message["recipient_mailbox_id"], message["recipient_generation"]),
+        ).fetchone()
+        if (
+            not reviewer_actor
+            or reviewer_actor["actor_kind"] != "BROWSER"
+            or reviewer_actor["status"] != "ACTIVE"
+            or not reviewer_mailbox
+            or not _destination_is_active(
+                con,
+                endpoint_id=reviewer_endpoint_id,
+                mailbox_id=reviewer_mailbox["mailbox_id"],
+                generation=int(reviewer_mailbox["generation"]),
+            )
+        ):
             raise PostOfficeError("PON_INPUT_INVALID", "Automatic reviewer endpoint must be a browser", {})
         package_hash = package_sha256.removeprefix("sha256:")
         if not con.execute("SELECT 1 FROM storage_copies WHERE content_sha256=?", (package_hash,)).fetchone():
@@ -604,6 +703,12 @@ def claim_next_review(
         capability, actor = _courier(con, credential_path)
         sql = """SELECT r.* FROM automatic_reviews r
                  JOIN reviewer_instances i ON i.reviewer_thread_id=r.reviewer_thread_id
+                 JOIN endpoints e ON e.endpoint_id=r.reviewer_endpoint_id AND e.status='ACTIVE'
+                 JOIN actors a ON a.actor_id=e.actor_id AND a.status='ACTIVE'
+                 JOIN semantic_messages m ON m.message_id=r.semantic_message_id
+                 JOIN mailboxes mb ON mb.mailbox_id=m.recipient_mailbox_id
+                                  AND mb.generation=m.recipient_generation
+                                  AND mb.endpoint_id=e.endpoint_id AND mb.status='ACTIVE'
                  WHERE r.state='QUEUED' AND i.status='ACTIVE'
                  AND NOT EXISTS (SELECT 1 FROM automatic_reviews active
                                  WHERE active.reviewer_thread_id=r.reviewer_thread_id AND active.state='ACTIVE')"""
@@ -902,14 +1007,62 @@ def complete_automatic_review(
         now = _timestamp()
         con.execute("UPDATE automatic_reviews SET state='EVALUATED',evaluated_at=? WHERE review_id=? AND state='RETURNED'", (now, review_id))
         if review["result_message_id"]:
-            con.execute("UPDATE semantic_messages SET state='ACKNOWLEDGED' WHERE message_id=? AND state='DELIVERED'", (review["result_message_id"],))
+            result_message = con.execute(
+                "SELECT * FROM semantic_messages WHERE message_id=?", (review["result_message_id"],)
+            ).fetchone()
+            result_before_root = _aggregate_root(
+                "SemanticMessage", result_message["message_id"], _message_state(con, result_message)
+            )
+            result_version = _aggregate_position(
+                con,
+                aggregate_type="SemanticMessage",
+                aggregate_id=result_message["message_id"],
+                current_root=result_before_root,
+            )
+            changed = con.execute(
+                "UPDATE semantic_messages SET state='ACKNOWLEDGED' WHERE message_id=? AND state='DELIVERED'",
+                (review["result_message_id"],),
+            ).rowcount
         updated = con.execute("SELECT * FROM automatic_reviews WHERE review_id=?", (review_id,)).fetchone()
         after = _review_state(updated)
         request = _runtime_request(actor=actor, capability=capability, message=message, operation="runtime.review.complete", aggregate_type="AutomaticReview", aggregate_id=review_id, parameters={"summary": summary})
         position = _aggregate_position(con, aggregate_type="AutomaticReview", aggregate_id=review_id, current_root=_aggregate_root("AutomaticReview", review_id, before))
         event = append_hub_event(con, request=request, capability_id=capability["capability_id"], aggregate_version=position + 1, before_root=_aggregate_root("AutomaticReview", review_id, before), after_root=_aggregate_root("AutomaticReview", review_id, after), event_result={"state": "EVALUATED", "summary": summary}, occurred_at=now)
+        message_event_id = None
+        if review["result_message_id"] and changed:
+            result_updated = con.execute(
+                "SELECT * FROM semantic_messages WHERE message_id=?", (review["result_message_id"],)
+            ).fetchone()
+            result_after_root = _aggregate_root(
+                "SemanticMessage", result_updated["message_id"], _message_state(con, result_updated)
+            )
+            con.execute(
+                "UPDATE semantic_messages SET aggregate_version=?,aggregate_root=? WHERE message_id=?",
+                (result_version + 1, result_after_root.removeprefix("sha256:"), result_updated["message_id"]),
+            )
+            message_request = _runtime_request(
+                actor=actor,
+                capability=capability,
+                message=result_message,
+                operation="runtime.review.complete",
+                aggregate_type="SemanticMessage",
+                aggregate_id=result_updated["message_id"],
+                parameters={"reviewId": review_id, "summary": summary},
+            )
+            message_event = append_hub_event(
+                con,
+                request=message_request,
+                capability_id=capability["capability_id"],
+                aggregate_version=result_version + 1,
+                before_root=result_before_root,
+                after_root=result_after_root,
+                event_result={"state": "ACKNOWLEDGED", "reviewEventId": event["eventId"]},
+                occurred_at=now,
+            )
+            message_event_id = message_event["eventId"]
         con.commit()
-        return {"ok": True, **after, "completed": True, "summary": summary, "eventId": event["eventId"]}
+        return {"ok": True, **after, "completed": True, "summary": summary,
+                "eventId": event["eventId"], "messageEventId": message_event_id}
     except Exception:
         if con.in_transaction:
             con.rollback()
@@ -932,7 +1085,10 @@ def _continuation_receipt(
 
 def reconcile_continuations(
     database_path: Path, credential_path: Path, plugin_root: Path,
+    *, observations: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    """Recover expired continuation leases only from exact external evidence."""
+    observations = observations or {}
     con = _open_writer(database_path, plugin_root)
     try:
         _courier(con, credential_path)
@@ -942,17 +1098,57 @@ def reconcile_continuations(
             (now,),
         ))
         recovered: list[str] = []
+        completed: list[str] = []
+        attention_ids: list[str] = []
         for item in expired:
-            con.execute(
-                """UPDATE continuation_items SET state='READY',lease_owner_actor_id=NULL,
-                   lease_token_sha256=NULL,lease_expires_at=NULL,last_error_code=NULL,updated_at=?
-                   WHERE continuation_id=?""",
-                (now, item["continuation_id"]),
-            )
-            _continuation_receipt(con, item["continuation_id"], "RECOVERED", {"outcome": "LEASE_EXPIRED_SAFE_REQUEUE"}, now)
-            recovered.append(str(item["continuation_id"]))
+            observation = observations.get(str(item["continuation_id"]))
+            if observation and observation.get("performedReceiptId"):
+                con.execute(
+                    """UPDATE continuation_items SET state='COMPLETED',lease_owner_actor_id=NULL,
+                       lease_token_sha256=NULL,lease_expires_at=NULL,last_error_code=NULL,
+                       updated_at=?,completed_at=? WHERE continuation_id=?""",
+                    (now, now, item["continuation_id"]),
+                )
+                _continuation_receipt(
+                    con,
+                    item["continuation_id"],
+                    "COMPLETED",
+                    {"outcome": "RECOVERED_PERFORMED", **observation},
+                    now,
+                )
+                completed.append(str(item["continuation_id"]))
+            elif observation and observation.get("actionAbsent") is True:
+                con.execute(
+                    """UPDATE continuation_items SET state='READY',lease_owner_actor_id=NULL,
+                       lease_token_sha256=NULL,lease_expires_at=NULL,last_error_code=NULL,updated_at=?
+                       WHERE continuation_id=?""",
+                    (now, item["continuation_id"]),
+                )
+                _continuation_receipt(
+                    con,
+                    item["continuation_id"],
+                    "RECOVERED",
+                    {"outcome": "LEASE_EXPIRED_PROVEN_ABSENT_SAFE_REQUEUE", **observation},
+                    now,
+                )
+                recovered.append(str(item["continuation_id"]))
+            else:
+                con.execute(
+                    "UPDATE continuation_items SET last_error_code='PON_OBSERVATION_AMBIGUOUS',updated_at=? WHERE continuation_id=?",
+                    (now, item["continuation_id"]),
+                )
+                attention_ids.append(_attention(
+                    con,
+                    entity_type="Continuation",
+                    entity_id=item["continuation_id"],
+                    severity="ERROR",
+                    reason_code="PON_OBSERVATION_AMBIGUOUS",
+                    details={"leaseExpiredAt": item["lease_expires_at"]},
+                    recorded_at=now,
+                ))
         con.commit()
         return {"ok": True, "recoveredContinuationIds": recovered,
+                "completedContinuationIds": completed, "attentionIds": attention_ids,
                 "readyCount": int(con.execute("SELECT COUNT(*) FROM continuation_items WHERE state='READY'").fetchone()[0])}
     except Exception:
         if con.in_transaction:

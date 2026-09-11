@@ -19,6 +19,7 @@ await fs.mkdir(moduleRoot, { recursive: true });
 await fs.writeFile(path.join(moduleRoot, "package.json"), JSON.stringify({ type: "module" }));
 await fs.writeFile(path.join(moduleRoot, "index.mjs"), `
 let markerVisible = process.env.PWB_TEST_REPLAY === "1";
+const clickStalls = process.env.PWB_TEST_CLICK_STALL === "1";
 const sourceMessageId = "12345678-1234-4234-8234-123456789abc";
 class Locator {
   constructor(kind) { this.kind = kind; }
@@ -39,10 +40,12 @@ class Locator {
   async getAttribute(name) { return name === "data-message-id" ? sourceMessageId : null; }
   async waitFor() {}
   async fill() {}
+  async evaluate() { return true; }
+  async press(key) { if (key === "Enter") markerVisible = true; }
   async isVisible() { return this.kind !== "none"; }
   async isEditable() { return this.kind === "composer"; }
   async isEnabled() { return true; }
-  async click() { markerVisible = true; }
+  async click() { if (!clickStalls) markerVisible = true; }
 }
 class Page {
   url() { return "https://chatgpt.com/c/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"; }
@@ -91,14 +94,14 @@ const manifest = {
 const manifestPath = path.join(testRoot, "activation-manifest.json");
 await fs.writeFile(manifestPath, JSON.stringify(manifest));
 
-async function run(replay) {
+async function run(replay, clickStall = false) {
   try {
     const result = await execFileAsync(process.execPath, [activationScript,
       "--cdp-endpoint", "ws://127.0.0.1:9222/devtools/browser/test",
       "--playwright-root", playwrightRoot,
       "--manifest", manifestPath,
       "--timeout-ms", "5000",
-    ], { env: { ...process.env, PWB_TEST_REPLAY: replay ? "1" : "0" }, timeout: 10_000 });
+    ], { env: { ...process.env, PWB_TEST_REPLAY: replay ? "1" : "0", PWB_TEST_CLICK_STALL: clickStall ? "1" : "0" }, timeout: 10_000 });
     return { code: 0, stdout: result.stdout, stderr: result.stderr };
   } catch (error) {
     return { code: Number.isInteger(error.code) ? error.code : 1,
@@ -118,6 +121,11 @@ try {
   assert.equal(receipt.sendDiscovery, "composer-form-submit");
   assert.equal(receipt.receiptReference,
     `playwright-chatgpt-review-activation:${reviewId}:${dispatchId}:${threadId}:12345678-1234-4234-8234-123456789abc`);
+
+  result = await run(false, true);
+  assert.equal(result.code, 0, result.stderr);
+  receipt = JSON.parse(result.stdout);
+  assert.match(receipt.sendDiscovery, /enter-fallback/);
 
   result = await run(true);
   assert.equal(result.code, 0, result.stderr);

@@ -1,6 +1,6 @@
 {
   "name": "playwright-browser-bridge",
-  "version": "0.1.0+codex.20260911184207",
+  "version": "0.1.0+codex.20260911234351",
   "description": "Singleton, loopback-only Playwright MCP companion for exact Post Office browser delivery and collection.",
   "author": {
     "name": "Treatid2",

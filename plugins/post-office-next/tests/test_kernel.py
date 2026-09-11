@@ -40,6 +40,7 @@ from post_office.runtime import (  # noqa: E402
     claim_next_transport,
     complete_transport,
     ensure_automatic_review,
+    reconcile_continuations,
     reconcile_transport,
     record_recovered_transport_receipt,
     retire_continuation,
@@ -48,6 +49,39 @@ from post_office.runtime import (  # noqa: E402
 
 
 class OperationalKernelTests(unittest.TestCase):
+    def test_expired_author_capability_cannot_create_actor(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            database, credential = self._author_bootstrapped(root)
+            con = sqlite3.connect(database)
+            try:
+                con.execute(
+                    "UPDATE caller_capabilities SET expires_at='2000-01-01T00:00:00Z' "
+                    "WHERE capability_id='PON-CAPABILITY-AUTHOR'"
+                )
+                con.commit()
+            finally:
+                con.close()
+            with self.assertRaisesRegex(PostOfficeError, "authenticated human author"):
+                create_kernel_actor(
+                    database,
+                    credential,
+                    action_id="PON-ACTION-MUST-NOT-COMMIT",
+                    actor_id="PON-ACTOR-MUST-NOT-EXIST",
+                    actor_kind="COURIER",
+                    actor_role="courier",
+                    plugin_root=PLUGIN_ROOT,
+                )
+            con = sqlite3.connect(database)
+            try:
+                self.assertIsNone(
+                    con.execute(
+                        "SELECT 1 FROM actors WHERE actor_id='PON-ACTOR-MUST-NOT-EXIST'"
+                    ).fetchone()
+                )
+            finally:
+                con.close()
+
     def _bootstrapped(self, root: Path) -> tuple[Path, Path]:
         database = root / "post-office-next.sqlite3"
         credential = root / "operator-credential.json"
@@ -1180,6 +1214,36 @@ class OperationalKernelTests(unittest.TestCase):
             self.assertEqual(withdrawn["state"], "WITHDRAWN")
             reconciled = reconcile_transport(database, courier_credential, PLUGIN_ROOT)
             self.assertEqual(len(reconciled["createdDispatchIds"]), 1)
+            con = sqlite3.connect(database)
+            try:
+                con.execute(
+                    "UPDATE actors SET status='REVOKED' WHERE actor_id=(SELECT actor_id FROM endpoints WHERE endpoint_id='PON-ENDPOINT-RECIPIENT')"
+                )
+                con.commit()
+            finally:
+                con.close()
+            held = claim_next_transport(database, courier_credential, PLUGIN_ROOT, lease_seconds=60)
+            self.assertFalse(held["available"])
+            self.assertEqual(held["heldDispatchIds"], reconciled["createdDispatchIds"])
+            con = sqlite3.connect(database)
+            try:
+                self.assertEqual(
+                    con.execute(
+                        "SELECT state FROM transport_dispatches WHERE dispatch_id=?",
+                        (reconciled["createdDispatchIds"][0],),
+                    ).fetchone()[0],
+                    "RECONCILIATION_REQUIRED",
+                )
+                con.execute(
+                    "UPDATE actors SET status='ACTIVE' WHERE actor_id=(SELECT actor_id FROM endpoints WHERE endpoint_id='PON-ENDPOINT-RECIPIENT')"
+                )
+                con.execute(
+                    "UPDATE transport_dispatches SET state='READY',last_error_code=NULL WHERE dispatch_id=?",
+                    (reconciled["createdDispatchIds"][0],),
+                )
+                con.commit()
+            finally:
+                con.close()
             claim = claim_next_transport(database, courier_credential, PLUGIN_ROOT, lease_seconds=60)
             self.assertTrue(claim["available"])
             con = sqlite3.connect(database)
@@ -1396,6 +1460,48 @@ class OperationalKernelTests(unittest.TestCase):
                 con.commit()
             finally:
                 con.close()
+            claim = claim_next_continuation(
+                database,
+                courier_credential,
+                PLUGIN_ROOT,
+                continuation_kind="BROWSER_COLLECTION",
+                lease_seconds=60,
+            )
+            con = sqlite3.connect(database)
+            try:
+                con.execute(
+                    "UPDATE continuation_items SET lease_expires_at='2000-01-01T00:00:00Z' WHERE continuation_id=?",
+                    (claim["continuationId"],),
+                )
+                con.commit()
+            finally:
+                con.close()
+            ambiguous = reconcile_continuations(database, courier_credential, PLUGIN_ROOT)
+            self.assertEqual(ambiguous["recoveredContinuationIds"], [])
+            self.assertEqual(len(ambiguous["attentionIds"]), 1)
+            con = sqlite3.connect(database)
+            try:
+                self.assertEqual(
+                    con.execute(
+                        "SELECT state FROM continuation_items WHERE continuation_id=?",
+                        (claim["continuationId"],),
+                    ).fetchone()[0],
+                    "LEASED",
+                )
+            finally:
+                con.close()
+            recovered = reconcile_continuations(
+                database,
+                courier_credential,
+                PLUGIN_ROOT,
+                observations={
+                    claim["continuationId"]: {
+                        "actionAbsent": True,
+                        "evidenceId": "PON-ABSENCE-EVIDENCE-001",
+                    }
+                },
+            )
+            self.assertEqual(recovered["recoveredContinuationIds"], [claim["continuationId"]])
             claim = claim_next_continuation(
                 database,
                 courier_credential,
