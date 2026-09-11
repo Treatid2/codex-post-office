@@ -19,9 +19,12 @@ from post_office.database import (  # noqa: E402
     backup_database,
     initialize_database,
     inspect_database,
+    reattest_migration_history,
     restore_database,
 )
+from post_office.canonical import sha256_file  # noqa: E402
 from post_office.diagnostics import PostOfficeError  # noqa: E402
+from post_office.kernel import bootstrap_kernel, create_kernel_credential  # noqa: E402
 
 
 def _insert_event_fixture(path: Path, event_id: str, event_sha256: str) -> None:
@@ -59,6 +62,83 @@ def _insert_event_fixture(path: Path, event_id: str, event_sha256: str) -> None:
 
 
 class DatabaseFoundationTests(unittest.TestCase):
+    def test_digest_only_migration_history_drift_can_be_reattested_with_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            database = root / "post-office-next.sqlite3"
+            backup = root / "pre-reattest.sqlite3"
+            receipt = root / "reattest-receipt.json"
+            initialize_database(PLUGIN_ROOT, database)
+            credential = root / "author.json"
+            create_kernel_credential(credential, "PON-CAPABILITY-REATTEST-AUTHOR")
+            bootstrap_kernel(
+                database,
+                credential,
+                actor_id="PON-ACTOR-REATTEST-AUTHOR",
+                actor_kind="HUMAN",
+                actor_role="author",
+                mode="ISOLATED",
+                plugin_root=PLUGIN_ROOT,
+            )
+            con = sqlite3.connect(database)
+            try:
+                con.execute("UPDATE schema_migrations SET sha256=? WHERE version=4", ("f" * 64,))
+                con.commit()
+            finally:
+                con.close()
+            with self.assertRaises(PostOfficeError):
+                inspect_database(database)
+
+            result = reattest_migration_history(
+                database, backup, receipt, credential, "AUTHOR-TEST-REATTEST"
+            )
+
+            self.assertTrue(result["ok"])
+            self.assertTrue(backup.is_file())
+            self.assertTrue(receipt.is_file())
+            self.assertEqual(result["exactAuthorActionId"], "AUTHOR-TEST-REATTEST")
+            self.assertEqual(result["drift"][0]["version"], 4)
+            self.assertEqual(result["backupSha256"], sha256_file(backup))
+            self.assertTrue(inspect_database(database)["databaseIdentityRoot"])
+            with self.assertRaises(PostOfficeError):
+                inspect_database(backup)
+
+    def test_migration_history_reattest_rejects_schema_drift_without_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            database = root / "post-office-next.sqlite3"
+            initialize_database(PLUGIN_ROOT, database)
+            credential = root / "author.json"
+            create_kernel_credential(credential, "PON-CAPABILITY-REATTEST-AUTHOR")
+            bootstrap_kernel(
+                database,
+                credential,
+                actor_id="PON-ACTOR-REATTEST-AUTHOR",
+                actor_kind="HUMAN",
+                actor_role="author",
+                mode="ISOLATED",
+                plugin_root=PLUGIN_ROOT,
+            )
+            con = sqlite3.connect(database)
+            try:
+                con.execute("UPDATE schema_migrations SET sha256=? WHERE version=4", ("f" * 64,))
+                con.execute("CREATE TABLE unexpected_schema_drift(value TEXT) STRICT")
+                con.commit()
+            finally:
+                con.close()
+            before = database.read_bytes()
+            with self.assertRaises(PostOfficeError) as raised:
+                reattest_migration_history(
+                    database,
+                    root / "backup.sqlite3",
+                    root / "receipt.json",
+                    credential,
+                    "AUTHOR-TEST-REJECT",
+                )
+            self.assertEqual(raised.exception.code, "PON_MIGRATION_MISMATCH")
+            self.assertEqual(database.read_bytes(), before)
+            self.assertFalse((root / "backup.sqlite3").exists())
+
     def test_initial_schema_is_transactional_integral_and_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "post-office-next.sqlite3"

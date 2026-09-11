@@ -56,6 +56,10 @@ P4 is driven by observed operational needs and does not reopen or weaken the cut
 - Provide secret-free queue, attention, and continuity status suitable for a bounded operator
   sweep.
 
+Delivered increments: migrated claims expose normalized destinations; obsolete work can be retired
+without fabricating completion; and an exact, already-delivered migrated message can receive an
+idempotent supplemental direct-transport receipt without rewriting its original fallback history.
+
 ### P4.2 — transport reliability proof
 
 - Prove the normal native and Playwright paths perform no Google Drive access.
@@ -71,6 +75,11 @@ P4 is driven by observed operational needs and does not reopen or weaken the cut
 - Retire old browser instances, task bindings, credentials, and compatibility shims only after
   outstanding work is drained or explicitly superseded.
 - Preserve a documented forward-recovery procedure for an authoritative deployment.
+
+Delivered increment: a backup-first migration-history re-attestation command repairs only
+digest-only drift when versions, names, the complete schema, integrity checks, and foreign keys all
+match. It refuses drifted migrations containing data-changing or destructive SQL and retains the
+pre-repair database plus an immutable receipt. Full forward upgrade rehearsal remains outstanding.
 
 ### P4.4 — public release hardening
 

@@ -10,7 +10,7 @@ from typing import Any
 
 from .benchmark import performance_baseline
 from .contracts import generate_contracts, validate_contracts
-from .database import backup_database, initialize_database, inspect_database, restore_database
+from .database import backup_database, initialize_database, inspect_database, reattest_migration_history, restore_database
 from .diagnostics import PostOfficeError
 from .legacy import capture_state, source_manifest
 from .kernel import (
@@ -30,6 +30,7 @@ from .runtime import (
     complete_transport,
     ensure_automatic_review,
     reconcile_transport,
+    record_recovered_transport_receipt,
     reconcile_continuations,
     retire_continuation,
     return_automatic_review,
@@ -92,11 +93,13 @@ def _parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--iterations", type=int, default=5)
     benchmark.add_argument("--capture-root")
     database = sub.add_parser("database")
-    database.add_argument("action", choices=["initialize", "inspect", "backup", "restore"])
+    database.add_argument("action", choices=["initialize", "inspect", "backup", "restore", "reattest-migration-history"])
     database.add_argument("--path", required=True)
     database.add_argument("--destination")
     database.add_argument("--receipt")
     database.add_argument("--backup-receipt")
+    database.add_argument("--credential")
+    database.add_argument("--exact-author-action-id")
     migration = sub.add_parser("migration")
     migration.add_argument("action", choices=["import", "replay"])
     migration.add_argument("--capture-root")
@@ -127,7 +130,7 @@ def _parser() -> argparse.ArgumentParser:
     kernel.add_argument("--allow-operation", action="append", dest="allowed_operations")
     kernel.add_argument("--expires-at")
     runtime = sub.add_parser("runtime")
-    runtime.add_argument("action", choices=["reconcile", "claim", "complete"])
+    runtime.add_argument("action", choices=["reconcile", "claim", "complete", "record-recovered"])
     runtime.add_argument("--path", required=True)
     runtime.add_argument("--credential", required=True)
     runtime.add_argument("--observations")
@@ -136,6 +139,9 @@ def _parser() -> argparse.ArgumentParser:
     runtime.add_argument("--lease-token")
     runtime.add_argument("--observable-marker")
     runtime.add_argument("--observed-receipt-id")
+    runtime.add_argument("--message-id")
+    runtime.add_argument("--bundle-id")
+    runtime.add_argument("--channel", choices=["NATIVE_TASK", "PLAYWRIGHT_BROWSER"])
     reviews = sub.add_parser("reviews")
     reviews.add_argument("action", choices=["ensure", "claim", "return", "status", "complete", "withdraw"])
     reviews.add_argument("--path", required=True)
@@ -225,6 +231,20 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
             if not args.destination or not args.receipt:
                 raise PostOfficeError("PON_INPUT_INVALID", "database backup requires --destination and --receipt")
             return backup_database(Path(args.path), Path(args.destination), Path(args.receipt), plugin_root)
+        if args.action == "reattest-migration-history":
+            if not args.destination or not args.receipt or not args.credential or not args.exact_author_action_id:
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "database reattest-migration-history requires --destination, --receipt, --credential and --exact-author-action-id",
+                )
+            return reattest_migration_history(
+                Path(args.path),
+                Path(args.destination),
+                Path(args.receipt),
+                Path(args.credential),
+                args.exact_author_action_id,
+                plugin_root,
+            )
         if not args.destination or not args.receipt or not args.backup_receipt:
             raise PostOfficeError(
                 "PON_INPUT_INVALID",
@@ -323,6 +343,22 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
         if args.action == "claim":
             return claim_next_transport(
                 Path(args.path), Path(args.credential), plugin_root, lease_seconds=args.lease_seconds
+            )
+        if args.action == "record-recovered":
+            if not all((args.message_id, args.bundle_id, args.channel, args.observable_marker, args.observed_receipt_id)):
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "runtime record-recovered requires --message-id, --bundle-id, --channel, --observable-marker and --observed-receipt-id",
+                )
+            return record_recovered_transport_receipt(
+                Path(args.path),
+                Path(args.credential),
+                plugin_root,
+                message_id=args.message_id,
+                bundle_id=args.bundle_id,
+                channel=args.channel,
+                observable_marker=args.observable_marker,
+                observed_receipt_id=args.observed_receipt_id,
             )
         if not all((args.dispatch_id, args.lease_token, args.observable_marker, args.observed_receipt_id)):
             raise PostOfficeError(

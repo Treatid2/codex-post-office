@@ -68,6 +68,7 @@ See [`docs/automatic-review-boundary.md`](docs/automatic-review-boundary.md).
 ./scripts/Invoke-PostOfficeNext.ps1 database inspect --path <isolated-vnext.sqlite3>
 ./scripts/Invoke-PostOfficeNext.ps1 database backup --path <isolated-vnext.sqlite3> --destination <backup.sqlite3> --receipt <receipt.json>
 ./scripts/Invoke-PostOfficeNext.ps1 database restore --path <backup.sqlite3> --backup-receipt <backup-receipt.json> --destination <restored.sqlite3> --receipt <restore-receipt.json>
+./scripts/Invoke-PostOfficeNext.ps1 database reattest-migration-history --path <vnext.sqlite3> --destination <pre-repair.sqlite3> --receipt <receipt.json> --credential <author.json> --exact-author-action-id <id>
 ./scripts/Invoke-PostOfficeNext.ps1 migration import --capture-root <frozen-capture> --baseline-payload-manifest <manifest.json> --payload-delta-manifest <manifest.json> --output-root <new-rehearsal-root>
 ./scripts/Invoke-PostOfficeNext.ps1 migration replay --source-root <imported-rehearsal-root> --output-root <new-replay-root>
 ./scripts/Invoke-PostOfficeNext.ps1 production prepare --source-root <verified-import-root> --output-root <new-shadow-root> --receipt <new-receipt.json>
@@ -76,10 +77,20 @@ See [`docs/automatic-review-boundary.md`](docs/automatic-review-boundary.md).
 ./scripts/Invoke-PostOfficeNext.ps1 kernel inspect --path <isolated-vnext.sqlite3>
 ./scripts/Invoke-PostOfficeNext.ps1 kernel execute --path <isolated-vnext.sqlite3> --request <request.json> --credential <credential.json>
 ./scripts/Invoke-PostOfficeNext.ps1 runtime reconcile --path <vnext.sqlite3> --credential <courier.json>
+./scripts/Invoke-PostOfficeNext.ps1 runtime record-recovered --path <vnext.sqlite3> --credential <courier.json> --message-id <id> --bundle-id <id> --channel PLAYWRIGHT_BROWSER --observable-marker <marker> --observed-receipt-id <receipt>
 ./scripts/Invoke-PostOfficeNext.ps1 reviews ensure --path <vnext.sqlite3> --credential <courier.json> --review-id <id> --semantic-message-id <id> --requester-task-id <id> --reviewer-endpoint-id <id> --package-sha256 <sha256>
 ./scripts/Invoke-PostOfficeNext.ps1 shadow dossier --path <shadow.sqlite3> --credential <author.json> --legacy-final-root <sha256> --output <dossier.json>
 ./scripts/Invoke-PostOfficeNext.ps1 cutover preflight --path <shadow.sqlite3> --credential <author.json> --dossier-id <id> --dossier-root <sha256>
 ```
+
+`database reattest-migration-history` is an exceptional, backup-first repair for digest-only
+migration-history drift. It refuses version/name drift, schema drift, integrity failures, and any
+drifted migration containing data-changing or destructive SQL. It is not a general way to bypass
+database identity checks and requires the active bootstrap author credential. `runtime
+record-recovered` records an idempotent supplemental receipt
+when an exactly retained, already-delivered migrated message is later recovered through a direct
+transport; it does not rewrite the original fallback history or acknowledge the message for its
+recipient.
 
 After preparation, authenticated tasks use `scripts/post_office_task.py` for `task`, `inbox`,
 `activate`, `block`, `respond`, `review`, and `close`. Preparation writes replacement credentials

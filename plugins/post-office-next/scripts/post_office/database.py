@@ -6,6 +6,7 @@ import os
 import re
 import sqlite3
 import uuid
+import hmac
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ from .canonical import (
     require_new_output_file,
     require_outside_protected_roots,
     sha256_file,
+    sha256_bytes,
     sha256_json,
     sqlite_content_identity,
     write_json,
@@ -256,6 +258,222 @@ def inspect_database(database_path: Path, plugin_root: Path | None = None) -> di
         if con.in_transaction:
             con.rollback()
         con.close()
+
+
+def _migration_history_reattest_preflight(
+    con: sqlite3.Connection,
+    database_path: Path,
+    plugin_root: Path,
+) -> dict[str, Any]:
+    """Validate the narrow exceptional case where only stored migration digests drifted."""
+    expected = _expected_migrations(plugin_root)
+    tables = _user_tables(con)
+    if "schema_migrations" not in tables:
+        raise PostOfficeError(
+            "PON_MIGRATION_MISMATCH",
+            "Database has no migration history to re-attest",
+            {"path": str(database_path)},
+        )
+    actual = [
+        {"version": int(row[0]), "name": str(row[1]), "sha256": str(row[2]), "appliedAt": str(row[3])}
+        for row in con.execute("SELECT version,name,sha256,applied_at FROM schema_migrations ORDER BY version")
+    ]
+    actual_names = [(item["version"], item["name"]) for item in actual]
+    expected_names = [(item["version"], item["name"]) for item in expected]
+    failures: list[str] = []
+    if int(con.execute("PRAGMA application_id").fetchone()[0]) != APPLICATION_ID:
+        failures.append("application_id")
+    if int(con.execute("PRAGMA user_version").fetchone()[0]) != expected[-1]["version"]:
+        failures.append("user_version")
+    if actual_names != expected_names:
+        failures.append("migration_versions_or_names")
+    if _schema_objects(con) != _expected_schema(plugin_root):
+        failures.append("schema_objects")
+    if str(con.execute("PRAGMA journal_mode").fetchone()[0]).upper() != "WAL":
+        failures.append("journal_mode")
+    if str(con.execute("PRAGMA quick_check(1)").fetchone()[0]) != "ok":
+        failures.append("quick_check")
+    if list(con.execute("PRAGMA foreign_key_check")):
+        failures.append("foreign_keys")
+    if failures:
+        raise PostOfficeError(
+            "PON_MIGRATION_MISMATCH",
+            "Migration history cannot be re-attested because database identity differs beyond stored digests",
+            {"path": str(database_path), "identityFailures": failures},
+        )
+    expected_by_version = {item["version"]: item for item in expected}
+    drift = [
+        {
+            "version": item["version"],
+            "name": item["name"],
+            "storedSha256": item["sha256"],
+            "expectedSha256": expected_by_version[item["version"]]["sha256"],
+        }
+        for item in actual
+        if item["sha256"] != expected_by_version[item["version"]]["sha256"]
+    ]
+    migration_paths = {version: path for version, _, path in _migration_files(plugin_root)}
+    for item in drift:
+        sql = migration_paths[item["version"]].read_text(encoding="utf-8")
+        without_comments = re.sub(r"--[^\n]*", "", sql)
+        if re.search(r"\b(INSERT|UPDATE|DELETE|REPLACE|DROP)\b", without_comments, re.IGNORECASE):
+            raise PostOfficeError(
+                "PON_MIGRATION_MISMATCH",
+                "A drifted migration contains data-changing or destructive SQL and cannot be digest-re-attested",
+                {"version": item["version"], "name": item["name"]},
+            )
+    content = sqlite_content_identity(con)
+    return {
+        "actual": actual,
+        "expected": expected,
+        "drift": drift,
+        "schemaObjectsRoot": sha256_json(_schema_objects(con)),
+        "logicalContentsRoot": content["contentsRoot"],
+        "eventBoundary": content["eventBoundary"],
+    }
+
+
+def reattest_migration_history(
+    database_path: Path,
+    backup_path: Path,
+    receipt_path: Path,
+    credential_path: Path,
+    exact_author_action_id: str,
+    plugin_root: Path | None = None,
+) -> dict[str, Any]:
+    """Repair digest-only migration drift after an exact-schema verification and retained backup."""
+    database_path = database_path.resolve(strict=True)
+    backup_path = backup_path.resolve(strict=False)
+    receipt_path = receipt_path.resolve(strict=False)
+    plugin_root = (plugin_root or Path(__file__).resolve().parents[2]).resolve(strict=True)
+    if not isinstance(exact_author_action_id, str) or not exact_author_action_id.strip():
+        raise PostOfficeError("PON_INPUT_INVALID", "Migration re-attestation requires an exact author action ID", {})
+    require_new_output_file(backup_path, inputs=[database_path, receipt_path])
+    require_new_output_file(receipt_path, inputs=[database_path, backup_path])
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    staged_backup = backup_path.with_name(f".{backup_path.name}.{uuid.uuid4().hex}.tmp")
+    staged_receipt = receipt_path.with_name(f".{receipt_path.name}.{uuid.uuid4().hex}.tmp")
+    backup_published = False
+    receipt_published = False
+    try:
+        source = sqlite3.connect(database_path, timeout=30)
+        source.row_factory = sqlite3.Row
+        try:
+            source.execute("PRAGMA foreign_keys=ON")
+            source.execute("BEGIN")
+            from .kernel import _credential
+
+            credential = _credential(credential_path)
+            instance = source.execute("SELECT * FROM kernel_instances WHERE instance_id='PON-KERNEL'").fetchone()
+            capability = source.execute(
+                "SELECT * FROM caller_capabilities WHERE capability_id=?", (credential["capabilityId"],)
+            ).fetchone()
+            actor = source.execute(
+                "SELECT * FROM actors WHERE actor_id=?", (capability["actor_id"],)
+            ).fetchone() if capability else None
+            if (
+                not instance
+                or credential["capabilityId"] != instance["bootstrap_capability_id"]
+                or not capability
+                or capability["status"] != "ACTIVE"
+                or not hmac.compare_digest(
+                    str(capability["secret_sha256"]), sha256_bytes(credential["secret"].encode("utf-8"))
+                )
+                or not actor
+                or actor["actor_id"] != instance["bootstrap_actor_id"]
+                or actor["actor_kind"] != "HUMAN"
+                or actor["status"] != "ACTIVE"
+            ):
+                raise PostOfficeError(
+                    "PON_AUTHENTICATION_FAILED",
+                    "Migration history re-attestation requires the active bootstrap author credential",
+                    {},
+                )
+            before = _migration_history_reattest_preflight(source, database_path, plugin_root)
+            if not before["drift"]:
+                raise PostOfficeError(
+                    "PON_CONCURRENCY_CONFLICT",
+                    "Migration history already matches the registered source",
+                    {"path": str(database_path)},
+                )
+            destination = sqlite3.connect(staged_backup)
+            try:
+                source.backup(destination)
+                destination.commit()
+            finally:
+                destination.close()
+            source.rollback()
+        finally:
+            if source.in_transaction:
+                source.rollback()
+            source.close()
+        backup_check = sqlite3.connect(staged_backup)
+        try:
+            backup_check.execute("PRAGMA foreign_keys=ON")
+            retained_before = _migration_history_reattest_preflight(backup_check, staged_backup, plugin_root)
+        finally:
+            backup_check.close()
+        if retained_before["actual"] != before["actual"] or retained_before["logicalContentsRoot"] != before["logicalContentsRoot"]:
+            raise PostOfficeError("PON_DATABASE_INVALID", "Migration repair backup does not match the source snapshot", {})
+        publish_file_exclusive(staged_backup, backup_path)
+        backup_published = True
+
+        writer = sqlite3.connect(database_path, timeout=30)
+        writer.row_factory = sqlite3.Row
+        try:
+            writer.execute("PRAGMA foreign_keys=ON")
+            writer.execute("BEGIN IMMEDIATE")
+            locked = _migration_history_reattest_preflight(writer, database_path, plugin_root)
+            if locked["actual"] != before["actual"] or locked["logicalContentsRoot"] != before["logicalContentsRoot"]:
+                raise PostOfficeError(
+                    "PON_CONCURRENCY_CONFLICT",
+                    "Database changed after the retained repair backup was taken",
+                    {},
+                )
+            for item in locked["drift"]:
+                writer.execute(
+                    "UPDATE schema_migrations SET sha256=? WHERE version=? AND name=? AND sha256=?",
+                    (item["expectedSha256"], item["version"], item["name"], item["storedSha256"]),
+                )
+                if writer.execute("SELECT changes()").fetchone()[0] != 1:
+                    raise PostOfficeError("PON_CONCURRENCY_CONFLICT", "Migration history changed during re-attestation", {})
+            writer.commit()
+            writer.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except Exception:
+            if writer.in_transaction:
+                writer.rollback()
+            raise
+        finally:
+            writer.close()
+
+        after = inspect_database(database_path, plugin_root)
+        identity = {
+            "schemaVersion": "1",
+            "kind": "POST_OFFICE_NEXT_MIGRATION_HISTORY_REATTESTATION",
+            "database": str(database_path),
+            "backup": str(backup_path),
+            "backupBytes": backup_path.stat().st_size,
+            "backupSha256": sha256_file(backup_path),
+            "exactAuthorActionId": exact_author_action_id.strip(),
+            "drift": before["drift"],
+            "beforeLogicalContentsRoot": before["logicalContentsRoot"],
+            "afterLogicalContentsRoot": after["database"]["logicalContentsRoot"],
+            "eventBoundary": after["database"]["eventBoundary"],
+            "schemaObjectsRoot": after["database"]["schemaObjectsRoot"],
+            "databaseIdentityRoot": after["databaseIdentityRoot"],
+            "recordedAt": _timestamp(),
+        }
+        receipt = {**identity, "receiptSha256": sha256_json(identity)}
+        write_json(staged_receipt, receipt)
+        publish_file_exclusive(staged_receipt, receipt_path)
+        receipt_published = True
+        return {"ok": True, **receipt}
+    finally:
+        if not backup_published:
+            _remove_staged_database(staged_backup)
+        if not receipt_published and os.path.lexists(staged_receipt):
+            staged_receipt.unlink()
 
 
 def validate_operational_connection(

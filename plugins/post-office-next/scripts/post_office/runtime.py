@@ -370,6 +370,160 @@ def complete_transport(
         con.close()
 
 
+def record_recovered_transport_receipt(
+    database_path: Path,
+    credential_path: Path,
+    plugin_root: Path,
+    *,
+    message_id: str,
+    bundle_id: str,
+    channel: str,
+    observable_marker: str,
+    observed_receipt_id: str,
+) -> dict[str, Any]:
+    """Record a verified supplemental delivery for an already-delivered migrated message."""
+    if channel not in {"NATIVE_TASK", "PLAYWRIGHT_BROWSER"}:
+        raise PostOfficeError("PON_INPUT_INVALID", "Recovered delivery channel is invalid", {"channel": channel})
+    if not all(isinstance(value, str) and value.strip() for value in (
+        message_id, bundle_id, observable_marker, observed_receipt_id
+    )):
+        raise PostOfficeError("PON_INPUT_INVALID", "Recovered delivery evidence is incomplete", {})
+    con = _open_writer(database_path, plugin_root)
+    try:
+        capability, actor = _courier(con, credential_path)
+        replay = con.execute(
+            """SELECT d.dispatch_id,d.transport_attempt_id,r.receipt_id
+               FROM transport_dispatches d
+               JOIN transport_attempts t ON t.transport_attempt_id=d.transport_attempt_id
+               JOIN runtime_receipts r ON r.dispatch_id=d.dispatch_id AND r.receipt_kind='RECOVERED'
+               WHERE t.message_id=? AND d.observed_receipt_id=?""",
+            (message_id, observed_receipt_id),
+        ).fetchone()
+        if replay:
+            con.rollback()
+            return {
+                "ok": True,
+                "replayed": True,
+                "messageId": message_id,
+                "dispatchId": replay["dispatch_id"],
+                "transportAttemptId": replay["transport_attempt_id"],
+                "runtimeReceiptId": replay["receipt_id"],
+            }
+        message = con.execute("SELECT * FROM semantic_messages WHERE message_id=?", (message_id,)).fetchone()
+        if not message:
+            raise PostOfficeError("PON_INPUT_INVALID", "Recovered delivery message does not exist", {"messageId": message_id})
+        if message["state"] not in {"DELIVERED", "ACKNOWLEDGED", "RESPONSE_RETURNED", "REVIEWED", "CLOSED"}:
+            raise PostOfficeError(
+                "PON_CONCURRENCY_CONFLICT",
+                "Supplemental recovery requires an already-delivered semantic message",
+                {"messageId": message_id, "state": message["state"]},
+            )
+        bundle = con.execute(
+            "SELECT * FROM message_bundles WHERE message_id=? AND bundle_id=?",
+            (message_id, bundle_id),
+        ).fetchone()
+        if not bundle:
+            raise PostOfficeError(
+                "PON_CUSTODY_NOT_VERIFIED",
+                "Recovered delivery does not match the retained message bundle",
+                {"messageId": message_id, "bundleId": bundle_id},
+            )
+        bundle_copy = con.execute(
+            "SELECT 1 FROM storage_copies WHERE content_sha256=? AND location_kind='LOCAL_CAS' LIMIT 1",
+            (bundle["sha256"],),
+        ).fetchone()
+        payload_count = int(con.execute("SELECT COUNT(*) FROM bundle_payloads WHERE bundle_id=?", (bundle["bundle_id"],)).fetchone()[0])
+        retained_payload_count = int(con.execute(
+            """SELECT COUNT(*) FROM bundle_payloads p WHERE p.bundle_id=? AND EXISTS(
+                   SELECT 1 FROM storage_copies s
+                   WHERE s.content_sha256=p.sha256 AND s.location_kind='LOCAL_CAS')""",
+            (bundle["bundle_id"],),
+        ).fetchone()[0])
+        if not bundle_copy and retained_payload_count != payload_count:
+            raise PostOfficeError(
+                "PON_CUSTODY_NOT_VERIFIED",
+                "Recovered delivery bundle lacks complete local custody",
+                {"bundleId": bundle["bundle_id"]},
+            )
+        mailbox = con.execute(
+            "SELECT * FROM mailboxes WHERE mailbox_id=? AND generation=?",
+            (message["recipient_mailbox_id"], message["recipient_generation"]),
+        ).fetchone()
+        if not mailbox:
+            raise PostOfficeError("PON_INPUT_INVALID", "Recovered delivery mailbox generation does not exist", {})
+        recorded_at = _timestamp()
+        attempt_id = "PON-TRANSPORT-RECOVERED-" + uuid.uuid4().hex
+        dispatch_id = "PON-DISPATCH-RECOVERED-" + uuid.uuid4().hex
+        attempt_number = int(con.execute(
+            "SELECT COALESCE(MAX(attempt_number),0)+1 FROM transport_attempts WHERE message_id=? AND bundle_id=?",
+            (message_id, bundle["bundle_id"]),
+        ).fetchone()[0])
+        destination = f"{message['recipient_mailbox_id']}:{int(message['recipient_generation'])}"
+        con.execute(
+            "INSERT INTO transport_attempts VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (
+                attempt_id, message_id, bundle["bundle_id"], message["sender_endpoint_id"], destination,
+                "RECEIPTED", attempt_number, None, recorded_at, recorded_at,
+            ),
+        )
+        con.execute(
+            "INSERT INTO transport_dispatches VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                dispatch_id, attempt_id, channel, mailbox["endpoint_id"], mailbox["mailbox_id"],
+                int(mailbox["generation"]), "RECEIPTED", None, None, None, observable_marker,
+                observed_receipt_id, 1, recorded_at, None, recorded_at, recorded_at,
+            ),
+        )
+        evidence = {
+            "marker": observable_marker,
+            "receiptId": observed_receipt_id,
+            "bundleSha256": bundle["sha256"],
+            "recovery": "SUPPLEMENTAL_POST_MIGRATION_DELIVERY",
+        }
+        before_root = _aggregate_root("TransportAttempt", attempt_id, None)
+        attempt = con.execute("SELECT * FROM transport_attempts WHERE transport_attempt_id=?", (attempt_id,)).fetchone()
+        dispatch = con.execute("SELECT * FROM transport_dispatches WHERE dispatch_id=?", (dispatch_id,)).fetchone()
+        after_root = _aggregate_root("TransportAttempt", attempt_id, _transport_state(attempt, dispatch))
+        request = _runtime_request(
+            actor=actor,
+            capability=capability,
+            message=message,
+            operation="runtime.delivery.recovered",
+            aggregate_type="TransportAttempt",
+            aggregate_id=attempt_id,
+            parameters=evidence,
+        )
+        event = append_hub_event(
+            con,
+            request=request,
+            capability_id=capability["capability_id"],
+            aggregate_version=1,
+            before_root=before_root,
+            after_root=after_root,
+            event_result={"state": "RECOVERED", "dispatchId": dispatch_id, "observedReceiptId": observed_receipt_id},
+            occurred_at=recorded_at,
+        )
+        runtime_receipt_id = _record_runtime_receipt(con, dispatch_id, "RECOVERED", evidence, recorded_at)
+        state_root = _operational_state(con)["operationalStateRoot"]
+        con.commit()
+        return {
+            "ok": True,
+            "replayed": False,
+            "messageId": message_id,
+            "transportAttemptId": attempt_id,
+            "dispatchId": dispatch_id,
+            "eventId": event["eventId"],
+            "runtimeReceiptId": runtime_receipt_id,
+            "stateRoot": state_root,
+        }
+    except Exception:
+        if con.in_transaction:
+            con.rollback()
+        raise
+    finally:
+        con.close()
+
+
 def ensure_automatic_review(
     database_path: Path, credential_path: Path, plugin_root: Path, *, review_id: str,
     semantic_message_id: str, requester_task_id: str, reviewer_endpoint_id: str,

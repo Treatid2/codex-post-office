@@ -41,6 +41,7 @@ from post_office.runtime import (  # noqa: E402
     complete_transport,
     ensure_automatic_review,
     reconcile_transport,
+    record_recovered_transport_receipt,
     retire_continuation,
     withdraw_automatic_review,
 )
@@ -1202,11 +1203,37 @@ class OperationalKernelTests(unittest.TestCase):
                 observable_marker=claim["observableMarker"], observed_receipt_id="PON-OBSERVED-RECEIPT-001",
             )
             self.assertTrue(delivered["ok"])
+            supplemental = record_recovered_transport_receipt(
+                database,
+                courier_credential,
+                PLUGIN_ROOT,
+                message_id="PON-MESSAGE-SEMANTIC",
+                bundle_id="PON-BUNDLE-SEMANTIC",
+                channel="PLAYWRIGHT_BROWSER",
+                observable_marker="POST-OFFICE-PLAYWRIGHT-DISPATCH PON-RECOVERY-001",
+                observed_receipt_id="playwright-chatgpt:PON-RECOVERY-001:PON-THREAD-001",
+            )
+            self.assertFalse(supplemental["replayed"])
+            replayed = record_recovered_transport_receipt(
+                database,
+                courier_credential,
+                PLUGIN_ROOT,
+                message_id="PON-MESSAGE-SEMANTIC",
+                bundle_id="PON-BUNDLE-SEMANTIC",
+                channel="PLAYWRIGHT_BROWSER",
+                observable_marker="POST-OFFICE-PLAYWRIGHT-DISPATCH PON-RECOVERY-001",
+                observed_receipt_id="playwright-chatgpt:PON-RECOVERY-001:PON-THREAD-001",
+            )
+            self.assertTrue(replayed["replayed"])
             con = sqlite3.connect(database)
             try:
                 self.assertEqual(con.execute("SELECT state FROM semantic_messages").fetchone()[0], "DELIVERED")
-                self.assertEqual(con.execute("SELECT state FROM transport_attempts").fetchone()[0], "RECEIPTED")
-                self.assertEqual(con.execute("SELECT state FROM transport_dispatches").fetchone()[0], "RECEIPTED")
+                self.assertEqual(con.execute("SELECT COUNT(*) FROM transport_attempts WHERE state='RECEIPTED'").fetchone()[0], 2)
+                self.assertEqual(con.execute("SELECT COUNT(*) FROM transport_dispatches WHERE state='RECEIPTED'").fetchone()[0], 2)
+                self.assertEqual(con.execute(
+                    "SELECT COUNT(*) FROM runtime_receipts WHERE receipt_kind='RECOVERED' AND dispatch_id=?",
+                    (supplemental["dispatchId"],),
+                ).fetchone()[0], 1)
             finally:
                 con.close()
     def test_p3_6_snapshot_and_retained_reconciliation_plan_apply(self) -> None:
