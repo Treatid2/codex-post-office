@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import hmac
+import io
 import json
 import os
+import re
 import secrets
 import sqlite3
 import uuid
+import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -604,6 +607,322 @@ def record_recovered_transport_receipt(
     except Exception:
         if con.in_transaction:
             con.rollback()
+        raise
+    finally:
+        con.close()
+
+
+def _validate_manifest_backed_return(data: bytes, source_message_id: str) -> dict[str, Any]:
+    """Validate one browser-produced ZIP without extracting it.
+
+    The current browser mailbox contract uses a single Markdown package-member manifest.  The
+    manifest deliberately omits itself, so the outer archive digest protects the manifest while
+    its table protects every other member.
+    """
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Browser return is not a valid ZIP", {}) from exc
+    with archive:
+        infos = archive.infolist()
+        names = [item.filename for item in infos]
+        if len(names) != len(set(names)):
+            raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Browser return contains duplicate member names", {})
+        if any(
+            not name or name.startswith(("/", "\\")) or ".." in Path(name.replace("\\", "/")).parts
+            for name in names
+        ):
+            raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Browser return contains an unsafe member path", {})
+        if sum(item.file_size for item in infos) > 512 * 1024 * 1024:
+            raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Browser return expands beyond the bounded limit", {})
+        bad_member = archive.testzip()
+        if bad_member:
+            raise PostOfficeError(
+                "PON_CUSTODY_NOT_VERIFIED", "Browser return ZIP integrity failed", {"member": bad_member}
+            )
+        manifest_names = [
+            name for name in names if "package-member-manifest" in name.lower() and name.lower().endswith(".md")
+        ]
+        if len(manifest_names) != 1:
+            raise PostOfficeError(
+                "PON_CUSTODY_NOT_VERIFIED",
+                "Browser return must contain one Markdown package-member manifest",
+                {"manifestCount": len(manifest_names)},
+            )
+        manifest_name = manifest_names[0]
+        try:
+            manifest_bytes = archive.read(manifest_name)
+            manifest_text = manifest_bytes.decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Browser return manifest is not UTF-8", {}) from exc
+        row_pattern = re.compile(
+            r"^\|\s*`([^`]+)`\s*\|\s*([0-9][0-9,]*)\s*\|\s*`([0-9a-fA-F]{64})`\s*\|\s*$",
+            re.MULTILINE,
+        )
+        listed = [(path, int(size.replace(",", "")), digest.lower()) for path, size, digest in row_pattern.findall(manifest_text)]
+        if not listed or len(listed) != len(names) - 1:
+            raise PostOfficeError(
+                "PON_CUSTODY_NOT_VERIFIED",
+                "Browser return manifest does not enumerate every non-manifest member",
+                {"listedCount": len(listed), "nonManifestMemberCount": len(names) - 1},
+            )
+        if len({path for path, _, _ in listed}) != len(listed) or manifest_name in {path for path, _, _ in listed}:
+            raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Browser return manifest membership is invalid", {})
+        for member_path, expected_size, expected_hash in listed:
+            if member_path not in names:
+                raise PostOfficeError(
+                    "PON_CUSTODY_NOT_VERIFIED", "Browser return manifest names an absent member", {"member": member_path}
+                )
+            member = archive.read(member_path)
+            if len(member) != expected_size or sha256_bytes(member) != expected_hash:
+                raise PostOfficeError(
+                    "PON_CUSTODY_NOT_VERIFIED", "Browser return member differs from its manifest", {"member": member_path}
+                )
+        correlation_found = False
+        for info in infos:
+            if info.file_size > 4 * 1024 * 1024 or not info.filename.lower().endswith((".md", ".json", ".txt", ".yaml", ".yml")):
+                continue
+            try:
+                if source_message_id in archive.read(info.filename).decode("utf-8-sig"):
+                    correlation_found = True
+                    break
+            except UnicodeDecodeError:
+                continue
+        if not correlation_found:
+            raise PostOfficeError(
+                "PON_OBSERVATION_MISMATCH", "Browser return does not identify its source message", {"sourceMessageId": source_message_id}
+            )
+        return {
+            "archiveMemberCount": len(names),
+            "manifestListedMemberCount": len(listed),
+            "manifestName": manifest_name,
+            "manifestSha256": sha256_bytes(manifest_bytes),
+            "zipIntegrity": "PASS",
+        }
+
+
+def ingest_recovered_browser_return(
+    database_path: Path,
+    credential_path: Path,
+    plugin_root: Path,
+    *,
+    source_message_id: str,
+    result_path: Path,
+    expected_sha256: str,
+    expected_size_bytes: int,
+    source_thread_id: str,
+    source_turn_id: str,
+    destination_thread_id: str,
+    destination_turn_id: str,
+) -> dict[str, Any]:
+    """Atomically retain and receipt an already-delivered manifest-backed browser return.
+
+    This is a recovery operation for a user shortcut.  It never sends to the destination browser;
+    the destination turn plus the exact attachment digest are the delivery evidence.
+    """
+    values = (
+        source_message_id, expected_sha256, source_thread_id, source_turn_id,
+        destination_thread_id, destination_turn_id,
+    )
+    if not all(isinstance(value, str) and value.strip() for value in values):
+        raise PostOfficeError("PON_INPUT_INVALID", "Recovered browser-return evidence is incomplete", {})
+    expected_sha256 = expected_sha256.lower().removeprefix("sha256:")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_sha256) or expected_size_bytes < 1:
+        raise PostOfficeError("PON_INPUT_INVALID", "Recovered browser-return identity is invalid", {})
+    try:
+        data = result_path.read_bytes()
+    except OSError as exc:
+        raise PostOfficeError("PON_INPUT_INVALID", "Recovered browser-return file is unavailable", {"path": str(result_path)}) from exc
+    observed_sha256 = sha256_bytes(data)
+    if len(data) != expected_size_bytes or observed_sha256 != expected_sha256:
+        raise PostOfficeError(
+            "PON_OBSERVATION_MISMATCH",
+            "Recovered browser-return bytes differ from the observed browser result",
+            {"expectedSha256": expected_sha256, "observedSha256": observed_sha256,
+             "expectedSizeBytes": expected_size_bytes, "observedSizeBytes": len(data)},
+        )
+    archive_evidence = _validate_manifest_backed_return(data, source_message_id)
+    observed_receipt_id = (
+        f"chatgpt-shortcut:{destination_thread_id}:{destination_turn_id}:sha256:{expected_sha256}"
+    )
+
+    con = _open_writer(database_path, plugin_root)
+    target: Path | None = None
+    target_created = False
+    try:
+        capability, actor = _courier(con, credential_path)
+        source = con.execute("SELECT * FROM semantic_messages WHERE message_id=?", (source_message_id,)).fetchone()
+        if not source or source["state"] not in {"DELIVERED", "ACKNOWLEDGED", "RESPONSE_RETURNED", "REVIEWED", "CLOSED"}:
+            raise PostOfficeError(
+                "PON_CONCURRENCY_CONFLICT", "Recovered browser return source is not delivered", {"sourceMessageId": source_message_id}
+            )
+        source_mailbox = con.execute(
+            "SELECT * FROM mailboxes WHERE mailbox_id=? AND generation=? AND status='ACTIVE'",
+            (source["recipient_mailbox_id"], source["recipient_generation"]),
+        ).fetchone()
+        source_endpoint = con.execute(
+            "SELECT * FROM endpoints WHERE endpoint_id=? AND status='ACTIVE'", (source_mailbox["endpoint_id"],)
+        ).fetchone() if source_mailbox else None
+        destination_endpoint = con.execute(
+            "SELECT * FROM endpoints WHERE endpoint_id=? AND status='ACTIVE'", (source["sender_endpoint_id"],)
+        ).fetchone()
+        destination_mailboxes = con.execute(
+            "SELECT * FROM mailboxes WHERE endpoint_id=? AND status='ACTIVE' ORDER BY generation DESC",
+            (source["sender_endpoint_id"],),
+        ).fetchall()
+        if not source_endpoint or not destination_endpoint or len(destination_mailboxes) != 1:
+            raise PostOfficeError("PON_INPUT_INVALID", "Recovered browser-return endpoint mapping is unavailable", {})
+        destination_mailbox = destination_mailboxes[0]
+        source_scope = json.loads(source_endpoint["access_scope_json"])
+        destination_scope = json.loads(destination_endpoint["access_scope_json"])
+        if _destination_from_scope(source_scope)["destinationThreadId"] != source_thread_id:
+            raise PostOfficeError("PON_OBSERVATION_MISMATCH", "Browser-return source thread differs from its endpoint binding", {})
+        if _destination_from_scope(destination_scope)["destinationThreadId"] != destination_thread_id:
+            raise PostOfficeError("PON_OBSERVATION_MISMATCH", "Browser-return destination thread differs from its endpoint binding", {})
+        replay = con.execute(
+            """SELECT m.message_id,b.bundle_id,d.dispatch_id,r.receipt_id
+               FROM message_relations rel
+               JOIN semantic_messages m ON m.message_id=rel.message_id
+               JOIN message_bundles b ON b.message_id=m.message_id
+               JOIN transport_attempts t ON t.message_id=m.message_id
+               JOIN transport_dispatches d ON d.transport_attempt_id=t.transport_attempt_id
+               JOIN runtime_receipts r ON r.dispatch_id=d.dispatch_id AND r.receipt_kind='RECOVERED'
+               WHERE rel.related_message_id=? AND rel.relation_kind='RESPONSE_TO'
+                 AND b.sha256=? AND d.observed_receipt_id=?""",
+            (source_message_id, expected_sha256, observed_receipt_id),
+        ).fetchone()
+        if replay:
+            con.rollback()
+            return {
+                "ok": True, "replayed": True, "sourceMessageId": source_message_id,
+                "messageId": replay["message_id"], "bundleId": replay["bundle_id"],
+                "dispatchId": replay["dispatch_id"], "runtimeReceiptId": replay["receipt_id"],
+                "sha256": expected_sha256, "sizeBytes": expected_size_bytes,
+            }
+        project = con.execute("SELECT code FROM projects WHERE project_id=?", (source["project_id"],)).fetchone()
+        if not project:
+            raise PostOfficeError("PON_INPUT_INVALID", "Recovered browser-return project is unavailable", {})
+        prefix = f"{project['code']}-C2C-"
+        retained_numbers = []
+        for row in con.execute("SELECT message_id FROM semantic_messages WHERE message_id LIKE ?", (prefix + "%",)):
+            suffix = str(row["message_id"])[len(prefix):]
+            if suffix.isdigit():
+                retained_numbers.append(int(suffix))
+        message_id = prefix + f"{max(retained_numbers, default=0) + 1:06d}"
+        suffix = sha256_bytes((source_message_id + expected_sha256).encode("utf-8"))[:24]
+        bundle_id = "PON-BUNDLE-BROWSER-RETURN-" + suffix
+        attempt_id = "PON-TRANSPORT-BROWSER-RETURN-" + suffix
+        dispatch_id = "PON-DISPATCH-BROWSER-RETURN-" + suffix
+        if con.execute(
+            """SELECT 1 FROM message_relations rel JOIN message_bundles b ON b.message_id=rel.message_id
+               WHERE rel.related_message_id=? AND rel.relation_kind='RESPONSE_TO' AND b.sha256=?""",
+            (source_message_id, expected_sha256),
+        ).fetchone():
+            raise PostOfficeError(
+                "PON_CONCURRENCY_CONFLICT", "The browser return is already retained with different delivery evidence", {}
+            )
+
+        relative = f"objects/{expected_sha256[:2]}/{expected_sha256}"
+        target = database_path.parent / Path(relative)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            if sha256_bytes(target.read_bytes()) != expected_sha256:
+                raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Existing CAS object differs from its digest", {})
+        else:
+            temporary = target.with_name(target.name + "." + uuid.uuid4().hex + ".tmp")
+            temporary.write_bytes(data)
+            if sha256_bytes(temporary.read_bytes()) != expected_sha256:
+                temporary.unlink(missing_ok=True)
+                raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Recovered browser-return CAS verification failed", {})
+            os.replace(temporary, target)
+            target_created = True
+
+        now = _timestamp()
+        storage_id = "PON-STORAGE-" + expected_sha256[:40]
+        con.execute(
+            "INSERT OR IGNORE INTO storage_copies VALUES(?,?,?,?,?,?,?,?)",
+            (storage_id, expected_sha256, "LOCAL_CAS", relative, len(data), "AUTHORITATIVE", "SHA256_READBACK", now),
+        )
+        content = {
+            "sourceMessageId": source_message_id, "sourceThreadId": source_thread_id,
+            "sourceTurnId": source_turn_id, "destinationThreadId": destination_thread_id,
+            "destinationTurnId": destination_turn_id, "sha256": expected_sha256,
+            "sizeBytes": len(data), **archive_evidence,
+        }
+        con.execute(
+            """INSERT INTO semantic_messages(message_id,project_id,mail_domain,message_type,sender_endpoint_id,
+               recipient_mailbox_id,recipient_generation,semantic_cycle_id,authority_grant_id,exact_author_action_id,
+               requested_action,completion_criteria,content_root,state,aggregate_version,aggregate_root,created_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'DELIVERED',1,?,?)""",
+            (
+                message_id, source["project_id"], source["mail_domain"], "RESPONSE", source_endpoint["endpoint_id"],
+                destination_mailbox["mailbox_id"], int(destination_mailbox["generation"]), source["semantic_cycle_id"],
+                source["authority_grant_id"], source["exact_author_action_id"],
+                "Review the exact retained browser return without inferring acceptance or further work",
+                "Record bounded reception while preserving candidate-only status", sha256_json(content), "0" * 64, now,
+            ),
+        )
+        con.execute("INSERT INTO message_relations VALUES(?,?,?)", (message_id, source_message_id, "RESPONSE_TO"))
+        con.execute(
+            "INSERT INTO message_bundles VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (bundle_id, message_id, result_path.name.removesuffix("(1).zip") + ".zip" if result_path.name.endswith("(1).zip") else result_path.name,
+             1, len(data), expected_sha256, archive_evidence["manifestSha256"], "REGISTERED", None, now),
+        )
+        con.execute(
+            "INSERT INTO bundle_payloads VALUES(?,?,?,?,?)", (bundle_id, 0, result_path.name, len(data), expected_sha256)
+        )
+        destination = f"{destination_mailbox['mailbox_id']}:{int(destination_mailbox['generation'])}"
+        con.execute(
+            "INSERT INTO transport_attempts VALUES(?,?,?,?,?,'RECEIPTED',1,NULL,?,?)",
+            (attempt_id, message_id, bundle_id, source_endpoint["endpoint_id"], destination, now, now),
+        )
+        marker = f"BROWSER-RETURN-SHA256 {expected_sha256}"
+        con.execute(
+            "INSERT INTO transport_dispatches VALUES(?,?,?,?,?,?,'RECEIPTED',NULL,NULL,NULL,?,?,1,?,NULL,?,?)",
+            (
+                dispatch_id, attempt_id, "PLAYWRIGHT_BROWSER", destination_endpoint["endpoint_id"],
+                destination_mailbox["mailbox_id"], int(destination_mailbox["generation"]),
+                marker, observed_receipt_id, now, now, now,
+            ),
+        )
+        row = con.execute("SELECT * FROM semantic_messages WHERE message_id=?", (message_id,)).fetchone()
+        before_root = _aggregate_root("SemanticMessage", message_id, None)
+        after_root = _aggregate_root("SemanticMessage", message_id, _message_state(con, row))
+        con.execute("UPDATE semantic_messages SET aggregate_root=? WHERE message_id=?", (after_root, message_id))
+        request = _runtime_request(
+            actor=actor, capability=capability, message=source,
+            operation="runtime.browserReturn.ingestRecovered", aggregate_type="SemanticMessage",
+            aggregate_id=message_id, parameters=content,
+        )
+        event = append_hub_event(
+            con, request=request, capability_id=capability["capability_id"], aggregate_version=1,
+            before_root=before_root, after_root=after_root,
+            event_result={"state": "DELIVERED", "sourceMessageId": source_message_id,
+                          "bundleId": bundle_id, "dispatchId": dispatch_id,
+                          "observedReceiptId": observed_receipt_id}, occurred_at=now,
+        )
+        con.execute("UPDATE semantic_messages SET registered_event_id=? WHERE message_id=?", (event["eventId"], message_id))
+        receipt_id = _record_runtime_receipt(
+            con, dispatch_id, "RECOVERED",
+            {**content, "marker": marker, "receiptId": observed_receipt_id,
+             "recovery": "USER_SHORTCUT_ALREADY_DELIVERED"}, now,
+        )
+        state_root = _operational_state(con)["operationalStateRoot"]
+        con.commit()
+        return {
+            "ok": True, "replayed": False, "sourceMessageId": source_message_id,
+            "messageId": message_id, "bundleId": bundle_id, "transportAttemptId": attempt_id,
+            "dispatchId": dispatch_id, "runtimeReceiptId": receipt_id, "eventId": event["eventId"],
+            "recipientMailboxId": destination_mailbox["mailbox_id"],
+            "recipientGeneration": int(destination_mailbox["generation"]),
+            "destinationThreadId": destination_thread_id, "sha256": expected_sha256,
+            "sizeBytes": len(data), **archive_evidence, "stateRoot": state_root,
+        }
+    except Exception:
+        if con.in_transaction:
+            con.rollback()
+        if target_created and target is not None:
+            target.unlink(missing_ok=True)
         raise
     finally:
         con.close()

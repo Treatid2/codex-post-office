@@ -51,5 +51,13 @@ operation receipt. A successful rehearsal is evidence, not authority. After auth
 the activation pointer and retained committed transfer must agree before any client treats the
 database as production.
 
+When a user has already shortcut-delivered a manifest-backed browser return, use
+`runtime ingest-browser-return` with the exact source message, observed source/destination thread
+and turn IDs, and independently measured archive size and SHA-256. It atomically validates the ZIP
+and member manifest, retains the original bytes in local CAS, registers the response, and records
+the existing destination turn as a recovered delivery. It does not send or duplicate the browser
+message and does not infer acknowledgement, acceptance, integration, further work, or cycle
+closure.
+
 Read `docs/delivery-phases.md` before describing P0, P0.1, P1, P2, P2.1, or P3.1 through P3.6. Those names are delivery
 gates, not defect priorities or runtime states.

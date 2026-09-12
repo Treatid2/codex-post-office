@@ -24,6 +24,14 @@ expiry, one bounded reconciliation does exactly one of three things:
 receipt. It atomically receipts the dispatch and attempt, advances the semantic message to
 `DELIVERED`, appends the message event and runtime receipt, and resolves prior attention.
 
+`runtime ingest-browser-return` is the bounded recovery path when a human has already carried a
+manifest-backed browser response to its intended browser recipient. It verifies the observed outer
+size and SHA-256, ZIP integrity, every non-manifest member, the source-message correlation, and both
+retained browser-thread bindings. In one transaction it retains the original archive in local CAS,
+allocates the next project message identity, registers the response relation, and records the
+already-visible destination turn as a receipted transport. It never sends a duplicate and does not
+convert reception into acknowledgement, acceptance, integration, further authority, or closure.
+
 The authenticated kernel also implements transport inspection, explicit retry, quarantine,
 duplicate tombstoning and attention listing. Retry creates a new numbered attempt; historical
 attempts remain retained.

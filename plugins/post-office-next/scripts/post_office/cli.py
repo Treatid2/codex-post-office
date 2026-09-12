@@ -29,6 +29,7 @@ from .runtime import (
     complete_continuation,
     complete_transport,
     ensure_automatic_review,
+    ingest_recovered_browser_return,
     ingest_automatic_review_result,
     reconcile_transport,
     record_recovered_transport_receipt,
@@ -132,7 +133,7 @@ def _parser() -> argparse.ArgumentParser:
     kernel.add_argument("--allow-operation", action="append", dest="allowed_operations")
     kernel.add_argument("--expires-at")
     runtime = sub.add_parser("runtime")
-    runtime.add_argument("action", choices=["reconcile", "claim", "complete", "record-recovered"])
+    runtime.add_argument("action", choices=["reconcile", "claim", "complete", "record-recovered", "ingest-browser-return"])
     runtime.add_argument("--path", required=True)
     runtime.add_argument("--credential", required=True)
     runtime.add_argument("--observations")
@@ -144,6 +145,14 @@ def _parser() -> argparse.ArgumentParser:
     runtime.add_argument("--message-id")
     runtime.add_argument("--bundle-id")
     runtime.add_argument("--channel", choices=["NATIVE_TASK", "PLAYWRIGHT_BROWSER"])
+    runtime.add_argument("--source-message-id")
+    runtime.add_argument("--result-path")
+    runtime.add_argument("--expected-sha256")
+    runtime.add_argument("--expected-size-bytes", type=int)
+    runtime.add_argument("--source-thread-id")
+    runtime.add_argument("--source-turn-id")
+    runtime.add_argument("--destination-thread-id")
+    runtime.add_argument("--destination-turn-id")
     reviews = sub.add_parser("reviews")
     reviews.add_argument("action", choices=["ensure", "claim", "ingest-result", "return", "status", "complete", "withdraw"])
     reviews.add_argument("--path", required=True)
@@ -377,6 +386,24 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
                 channel=args.channel,
                 observable_marker=args.observable_marker,
                 observed_receipt_id=args.observed_receipt_id,
+            )
+        if args.action == "ingest-browser-return":
+            if not all((args.source_message_id, args.result_path, args.expected_sha256,
+                        args.expected_size_bytes, args.source_thread_id, args.source_turn_id,
+                        args.destination_thread_id, args.destination_turn_id)):
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "runtime ingest-browser-return requires --source-message-id, --result-path, "
+                    "--expected-sha256, --expected-size-bytes, --source-thread-id, --source-turn-id, "
+                    "--destination-thread-id and --destination-turn-id",
+                )
+            return ingest_recovered_browser_return(
+                Path(args.path), Path(args.credential), plugin_root,
+                source_message_id=args.source_message_id, result_path=Path(args.result_path),
+                expected_sha256=args.expected_sha256, expected_size_bytes=args.expected_size_bytes,
+                source_thread_id=args.source_thread_id, source_turn_id=args.source_turn_id,
+                destination_thread_id=args.destination_thread_id,
+                destination_turn_id=args.destination_turn_id,
             )
         if not all((args.dispatch_id, args.lease_token, args.observable_marker, args.observed_receipt_id)):
             raise PostOfficeError(

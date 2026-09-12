@@ -9,6 +9,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -40,6 +41,7 @@ from post_office.runtime import (  # noqa: E402
     claim_next_transport,
     complete_transport,
     ensure_automatic_review,
+    ingest_recovered_browser_return,
     reconcile_continuations,
     reconcile_transport,
     record_recovered_transport_receipt,
@@ -78,6 +80,138 @@ class OperationalKernelTests(unittest.TestCase):
                     con.execute(
                         "SELECT 1 FROM actors WHERE actor_id='PON-ACTOR-MUST-NOT-EXIST'"
                     ).fetchone()
+                )
+            finally:
+                con.close()
+
+    def test_recovered_browser_return_is_atomically_retained_and_receipted(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            database, author_credential = self._author_bootstrapped(root)
+            self._seed_project(database)
+            courier_credential = root / "courier.json"
+            create_kernel_actor(
+                database, author_credential, action_id="PON-ACTION-RETURN-COURIER-ACTOR",
+                actor_id="PON-ACTOR-RETURN-COURIER", actor_kind="COURIER", actor_role="courier",
+                plugin_root=PLUGIN_ROOT,
+            )
+            bind_kernel_credential(
+                database, author_credential, courier_credential,
+                action_id="PON-ACTION-RETURN-COURIER-CREDENTIAL",
+                actor_id="PON-ACTOR-RETURN-COURIER", capability_id="PON-CAPABILITY-RETURN-COURIER",
+                subject_kind="SYSTEM", subject_id="PON-KERNEL", subject_generation=1,
+                allowed_operations=["transport.inspect"], expires_at=None, plugin_root=PLUGIN_ROOT,
+            )
+            now = "2026-09-12T00:00:00Z"
+            source_thread = "PON-THREAD-ELOQUENT"
+            destination_thread = "PON-THREAD-MASTER"
+            con = sqlite3.connect(database)
+            try:
+                con.execute(
+                    "INSERT INTO actors VALUES(?,?,?,?,?)",
+                    ("PON-ACTOR-MASTER", "BROWSER", "browser", "ACTIVE", now),
+                )
+                con.execute(
+                    "INSERT INTO actors VALUES(?,?,?,?,?)",
+                    ("PON-ACTOR-ELOQUENT", "BROWSER", "browser", "ACTIVE", now),
+                )
+                con.execute(
+                    """INSERT INTO endpoints(endpoint_id,actor_id,project_id,task_id,role,access_scope_json,
+                       status,startup_root,created_event_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                    ("PON-ENDPOINT-MASTER", "PON-ACTOR-MASTER", "PON-PROJECT-001", None, "BROWSER_PROXY",
+                     json.dumps({"browserBinding": {"chat_thread_id": destination_thread}}),
+                     "ACTIVE", "1" * 64, None, now),
+                )
+                con.execute(
+                    """INSERT INTO endpoints(endpoint_id,actor_id,project_id,task_id,role,access_scope_json,
+                       status,startup_root,created_event_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                    ("PON-ENDPOINT-ELOQUENT", "PON-ACTOR-ELOQUENT", "PON-PROJECT-001", None, "BROWSER_PROXY",
+                     json.dumps({"browserBinding": {"chat_thread_id": source_thread}}),
+                     "ACTIVE", "2" * 64, None, now),
+                )
+                con.execute(
+                    "INSERT INTO mailboxes VALUES(?,?,?,?,?,?,?)",
+                    ("DEMO-MBX-MASTER", 1, "DEMO", "PON-ENDPOINT-MASTER", "ACTIVE", None, now),
+                )
+                con.execute(
+                    "INSERT INTO mailboxes VALUES(?,?,?,?,?,?,?)",
+                    ("DEMO-MBX-ELOQUENT", 1, "DEMO", "PON-ENDPOINT-ELOQUENT", "ACTIVE", None, now),
+                )
+                con.execute(
+                    "INSERT INTO exact_author_actions VALUES(?,?,?,?,?,?,?)",
+                    ("PON-ACTION-SOURCE", "PON-ACTOR-AUTHOR", "message.send", "{}", "3" * 64, now, None),
+                )
+                con.execute(
+                    """INSERT INTO semantic_cycles(cycle_id,project_id,scope,opening_author_action_id,state,
+                       aggregate_version,aggregate_root,created_at) VALUES(?,?,?,?,?,?,?,?)""",
+                    ("PON-CYCLE-RETURN", "PON-PROJECT-001", "Return test", "PON-ACTION-SOURCE",
+                     "ACTIVE", 1, "4" * 64, now),
+                )
+                con.execute(
+                    """INSERT INTO semantic_messages(message_id,project_id,mail_domain,message_type,sender_endpoint_id,
+                       recipient_mailbox_id,recipient_generation,semantic_cycle_id,authority_grant_id,exact_author_action_id,
+                       requested_action,completion_criteria,content_root,state,aggregate_version,aggregate_root,created_at)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    ("DEMO-C2C-000001", "PON-PROJECT-001", "DEMO", "HANDOFF", "PON-ENDPOINT-MASTER",
+                     "DEMO-MBX-ELOQUENT", 1, "PON-CYCLE-RETURN", None, "PON-ACTION-SOURCE",
+                     "Produce candidate", "Return exact package", "5" * 64, "DELIVERED", 1, "6" * 64, now),
+                )
+                con.commit()
+            finally:
+                con.close()
+
+            response_name = "DEMO_BROWSER_RESPONSE_RE-DEMO-C2C-000001.md"
+            response = b"in_reply_to: DEMO-C2C-000001\nresult: COMPLETE_CANDIDATE\n"
+            response_hash = hashlib.sha256(response).hexdigest()
+            manifest_name = "DEMO_Package-Member-Manifest_v01.md"
+            manifest = (
+                "# Package member manifest\n\n"
+                "| Relative member | Bytes | SHA-256 |\n"
+                "|---|---:|---|\n"
+                f"| `{response_name}` | {len(response):,} | `{response_hash}` |\n"
+            ).encode("utf-8")
+            archive_path = root / "DEMO_BROWSER_RETURN_v01.zip"
+            with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr(response_name, response)
+                archive.writestr(manifest_name, manifest)
+            archive_data = archive_path.read_bytes()
+            archive_hash = hashlib.sha256(archive_data).hexdigest()
+
+            result = ingest_recovered_browser_return(
+                database, courier_credential, PLUGIN_ROOT,
+                source_message_id="DEMO-C2C-000001", result_path=archive_path,
+                expected_sha256=archive_hash, expected_size_bytes=len(archive_data),
+                source_thread_id=source_thread, source_turn_id="PON-TURN-ELOQUENT",
+                destination_thread_id=destination_thread, destination_turn_id="PON-TURN-MASTER",
+            )
+            self.assertFalse(result["replayed"])
+            self.assertEqual(result["messageId"], "DEMO-C2C-000002")
+            self.assertEqual(result["recipientMailboxId"], "DEMO-MBX-MASTER")
+            replay = ingest_recovered_browser_return(
+                database, courier_credential, PLUGIN_ROOT,
+                source_message_id="DEMO-C2C-000001", result_path=archive_path,
+                expected_sha256=archive_hash, expected_size_bytes=len(archive_data),
+                source_thread_id=source_thread, source_turn_id="PON-TURN-ELOQUENT",
+                destination_thread_id=destination_thread, destination_turn_id="PON-TURN-MASTER",
+            )
+            self.assertTrue(replay["replayed"])
+            self.assertEqual(replay["messageId"], result["messageId"])
+            con = sqlite3.connect(database)
+            try:
+                self.assertEqual(
+                    con.execute("SELECT state FROM semantic_messages WHERE message_id='DEMO-C2C-000002'").fetchone()[0],
+                    "DELIVERED",
+                )
+                self.assertEqual(
+                    con.execute(
+                        "SELECT COUNT(*) FROM runtime_receipts WHERE receipt_kind='RECOVERED' "
+                        "AND json_extract(evidence_json,'$.recovery')='USER_SHORTCUT_ALREADY_DELIVERED'"
+                    ).fetchone()[0],
+                    1,
+                )
+                self.assertEqual(
+                    con.execute("SELECT COUNT(*) FROM storage_copies WHERE content_sha256=?", (archive_hash,)).fetchone()[0],
+                    1,
                 )
             finally:
                 con.close()

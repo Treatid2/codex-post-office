@@ -4,6 +4,10 @@ All notable changes to this repository will be documented here.
 
 ## Unreleased
 
+- Added an authenticated, idempotent `runtime ingest-browser-return` recovery command for exact
+  manifest-backed browser returns that a human has already delivered to the intended browser. The
+  command validates archive/member custody and endpoint bindings, imports the original bytes into
+  local CAS, registers the response, and records the observed shortcut delivery without resending.
 - Corrected the P3 cutover review findings: all secondary message-state changes now receive
   aggregate metadata and journal events; prepared cutover writes are durably fenced; revoked
   destinations are not materialized or claimed; continuation lease recovery is evidence-based;
