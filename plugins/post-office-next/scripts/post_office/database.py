@@ -251,13 +251,30 @@ def inspect_database(database_path: Path, plugin_root: Path | None = None) -> di
     con = readonly_connection(database_path)
     try:
         con.execute("BEGIN")
-        result = _inspect_connection(con, database_path, plugin_root)
+        result = inspect_connection(con, database_path, plugin_root)
         con.rollback()
         return result
     finally:
         if con.in_transaction:
             con.rollback()
         con.close()
+
+
+def inspect_connection(
+    con: sqlite3.Connection,
+    database_path: Path,
+    plugin_root: Path | None = None,
+) -> dict[str, Any]:
+    """Inspect a database through the caller's already-open read transaction."""
+    if not con.in_transaction:
+        raise PostOfficeError(
+            "PON_INPUT_INVALID",
+            "Database connection inspection requires an active read transaction",
+            {},
+        )
+    database_path = database_path.resolve(strict=False)
+    plugin_root = (plugin_root or Path(__file__).resolve().parents[2]).resolve(strict=True)
+    return _inspect_connection(con, database_path, plugin_root)
 
 
 def _migration_history_reattest_preflight(

@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import json
+import os
+import sqlite3
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
 from post_office.database import initialize_database, inspect_database
+import post_office.production as production_module
 from post_office.production import prepare_production_root, production_status
 
 
@@ -43,6 +47,53 @@ class ProductionPreparationTests(unittest.TestCase):
             self.assertEqual(status["migrationEvidence"]["historicalOpenCount"], 0)
             self.assertFalse(status["secretsIncluded"])
             self.assertNotIn('"secret"', json.dumps(status))
+
+            production_database = prepared / "post-office-next.sqlite3"
+            writer = sqlite3.connect(production_database)
+            original_inspection = production_module.inspect_connection
+
+            def inspect_then_commit(con, database_path, plugin_root):
+                inspection = original_inspection(con, database_path, plugin_root)
+                writer.execute(
+                    "INSERT INTO drive_access_metrics VALUES(?,?,?,?,?,?,?)",
+                    (
+                        "PON-DRIVE-METRIC-CONCURRENT-STATUS",
+                        "UNEXPECTED",
+                        1,
+                        "2026-09-12T00:00:00Z",
+                        "2026-09-12T00:01:00Z",
+                        "{}",
+                        "2026-09-12T00:01:00Z",
+                    ),
+                )
+                writer.commit()
+                return inspection
+
+            try:
+                with patch.object(
+                    production_module,
+                    "inspect_connection",
+                    side_effect=inspect_then_commit,
+                ):
+                    concurrent = production_status(production_database, PLUGIN_ROOT)
+            finally:
+                writer.close()
+            self.assertEqual(concurrent["logicalStateRoot"], status["logicalStateRoot"])
+            self.assertEqual(concurrent["unexpectedDriveAccessCount"], 0)
+            after_commit = production_status(production_database, PLUGIN_ROOT)
+            self.assertNotEqual(after_commit["logicalStateRoot"], status["logicalStateRoot"])
+            self.assertEqual(after_commit["unexpectedDriveAccessCount"], 1)
+
+            original_cwd = Path.cwd()
+            try:
+                os.chdir(prepared.parent)
+                relative = production_status(
+                    Path(prepared.name) / "post-office-next.sqlite3",
+                    PLUGIN_ROOT,
+                )
+            finally:
+                os.chdir(original_cwd)
+            self.assertEqual(relative["logicalStateRoot"], after_commit["logicalStateRoot"])
 
 
 if __name__ == "__main__":

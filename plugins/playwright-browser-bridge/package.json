@@ -12,7 +12,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --check scripts/playwright_chatgpt_collect_direct.mjs && node --check scripts/playwright_chatgpt_library.mjs && node --check scripts/chatgpt_composer.mjs && node --check scripts/playwright_chatgpt_deliver_direct.mjs && node --check scripts/playwright_chatgpt_review_activate_direct.mjs && node scripts/Test-ChatGptComposerDiscovery.mjs && node scripts/Test-PlaywrightMcpBroker.mjs && node scripts/Test-PlaywrightChatGptTransport.mjs && node scripts/Test-PlaywrightChatGptReviewActivation.mjs && node scripts/Test-PlaywrightChatGptLibrary.mjs"
+    "test": "node --check scripts/playwright_chatgpt_collect_direct.mjs && node --check scripts/playwright_chatgpt_library.mjs && node --check scripts/chatgpt_composer.mjs && node --check scripts/playwright_chatgpt_deliver_direct.mjs && node --check scripts/playwright_chatgpt_review_activate_direct.mjs && node scripts/Test-ChatGptComposerDiscovery.mjs && node scripts/Test-PlaywrightMcpBroker.mjs && node scripts/Test-PlaywrightChatGptTransport.mjs && node scripts/Test-PlaywrightChatGptReviewActivation.mjs && node scripts/Test-PlaywrightChatGptDirectDelivery.mjs && node scripts/Test-PlaywrightChatGptLibrary.mjs"
   },
   "dependencies": {
     "@playwright/mcp": "0.0.80"

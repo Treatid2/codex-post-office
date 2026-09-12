@@ -4,6 +4,9 @@ All notable changes to this repository will be documented here.
 
 ## Unreleased
 
+- Bound continuation recovery evidence to the exact lease attempt and observation time, made
+  production status a single coherent read snapshot with relative-path support, and removed the
+  optional upload-button dependency from native browser attachment delivery.
 - Hardened exact browser-result collection for ChatGPT signed downloads whose
   `fn` parameter contains Chrome's local collision suffix. The collector now
   applies the same bounded filename rule used for browser download events and

@@ -128,9 +128,9 @@ async function setAttachments(page) {
     'button[aria-label="Add files and more"]',
     'button[aria-label="Attach files"]',
   ].join(", ")).first();
-  await add.waitFor({ state: "attached", timeout: timeoutMs });
   let attached = await setNativeFileInput();
   if (!attached) {
+    await add.waitFor({ state: "attached", timeout: timeoutMs });
     await add.click({ force: true, timeout: timeoutMs });
     await page.waitForTimeout(250);
     attached = await setNativeFileInput();

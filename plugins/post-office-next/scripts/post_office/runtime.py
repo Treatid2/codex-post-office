@@ -2927,6 +2927,53 @@ def _continuation_receipt(
     return receipt_id
 
 
+def _continuation_observation_matches_lease(
+    con: sqlite3.Connection,
+    item: sqlite3.Row,
+    observation: Any,
+    reconciled_at: str,
+) -> bool:
+    """Require evidence to name the exact expired lease attempt it resolves."""
+    if not isinstance(observation, dict):
+        return False
+    binding = observation.get("leaseBinding")
+    if not isinstance(binding, dict):
+        return False
+    receipt_id = binding.get("leaseReceiptId")
+    if not isinstance(receipt_id, str) or not receipt_id:
+        return False
+    receipt = con.execute(
+        """SELECT evidence_json FROM continuation_receipts
+           WHERE receipt_id=? AND continuation_id=? AND receipt_kind='LEASED'""",
+        (receipt_id, item["continuation_id"]),
+    ).fetchone()
+    if not receipt:
+        return False
+    try:
+        receipt_evidence = json.loads(receipt["evidence_json"])
+        expected = {
+            "continuationId": str(item["continuation_id"]),
+            "attemptCount": int(item["attempt_count"]),
+            "leaseOwnerActorId": str(item["lease_owner_actor_id"]),
+            "leaseTokenSha256": str(item["lease_token_sha256"]),
+            "evidenceRoot": str(item["evidence_root"]),
+        }
+        if any(binding.get(key) != value for key, value in expected.items()):
+            return False
+        if any(receipt_evidence.get(key) != value for key, value in expected.items()):
+            return False
+        observed_at = observation.get("observedAt")
+        if not isinstance(observed_at, str) or not observed_at:
+            return False
+        observed = _parse_timestamp(observed_at)
+        return (
+            observed >= _parse_timestamp(str(item["lease_expires_at"]))
+            and observed <= _parse_timestamp(reconciled_at)
+        )
+    except (PostOfficeError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+
+
 def reconcile_continuations(
     database_path: Path, credential_path: Path, plugin_root: Path,
     *, observations: dict[str, dict[str, Any]] | None = None,
@@ -2946,7 +2993,11 @@ def reconcile_continuations(
         attention_ids: list[str] = []
         for item in expired:
             observation = observations.get(str(item["continuation_id"]))
-            if observation and observation.get("performedReceiptId"):
+            observation_matches = _continuation_observation_matches_lease(
+                con, item, observation, now
+            )
+            performed_receipt = observation.get("performedReceiptId") if isinstance(observation, dict) else None
+            if observation_matches and isinstance(performed_receipt, str) and performed_receipt:
                 con.execute(
                     """UPDATE continuation_items SET state='COMPLETED',lease_owner_actor_id=NULL,
                        lease_token_sha256=NULL,lease_expires_at=NULL,last_error_code=NULL,
@@ -2961,7 +3012,7 @@ def reconcile_continuations(
                     now,
                 )
                 completed.append(str(item["continuation_id"]))
-            elif observation and observation.get("actionAbsent") is True:
+            elif observation_matches and observation.get("actionAbsent") is True:
                 con.execute(
                     """UPDATE continuation_items SET state='READY',lease_owner_actor_id=NULL,
                        lease_token_sha256=NULL,lease_expires_at=NULL,last_error_code=NULL,updated_at=?
@@ -2987,7 +3038,12 @@ def reconcile_continuations(
                     entity_id=item["continuation_id"],
                     severity="ERROR",
                     reason_code="PON_OBSERVATION_AMBIGUOUS",
-                    details={"leaseExpiredAt": item["lease_expires_at"]},
+                    details={
+                        "leaseExpiredAt": item["lease_expires_at"],
+                        "attemptCount": int(item["attempt_count"]),
+                        "observationPresent": observation is not None,
+                        "leaseBindingMatched": observation_matches,
+                    },
                     recorded_at=now,
                 ))
         con.commit()
@@ -3024,13 +3080,25 @@ def claim_next_continuation(
         now = now_dt.isoformat().replace("+00:00", "Z")
         expires = (now_dt + timedelta(seconds=lease_seconds)).isoformat().replace("+00:00", "Z")
         token = secrets.token_urlsafe(32)
+        token_sha256 = sha256_bytes(token.encode("utf-8"))
+        attempt_count = int(item["attempt_count"]) + 1
         con.execute(
             """UPDATE continuation_items SET state='LEASED',lease_owner_actor_id=?,
                lease_token_sha256=?,lease_expires_at=?,attempt_count=attempt_count+1,updated_at=?
                WHERE continuation_id=? AND state='READY'""",
-            (actor["actor_id"], sha256_bytes(token.encode("utf-8")), expires, now, item["continuation_id"]),
+            (actor["actor_id"], token_sha256, expires, now, item["continuation_id"]),
         )
-        receipt_id = _continuation_receipt(con, item["continuation_id"], "LEASED", {"leaseExpiresAt": expires}, now)
+        lease_evidence = {
+            "continuationId": str(item["continuation_id"]),
+            "attemptCount": attempt_count,
+            "leaseOwnerActorId": str(actor["actor_id"]),
+            "leaseTokenSha256": token_sha256,
+            "leaseExpiresAt": expires,
+            "evidenceRoot": str(item["evidence_root"]),
+        }
+        receipt_id = _continuation_receipt(
+            con, item["continuation_id"], "LEASED", lease_evidence, now
+        )
         con.commit()
         payload = json.loads(item["payload_json"])
         destination = _continuation_destination(con, payload)
@@ -3038,7 +3106,8 @@ def claim_next_continuation(
                 "continuationKind": item["continuation_kind"], "sourceTable": item["source_table"],
                 "sourceId": item["source_id"], "payload": payload, **destination,
                 "evidenceRoot": item["evidence_root"], "leaseToken": token,
-                "leaseExpiresAt": expires, "receiptId": receipt_id}
+                "leaseExpiresAt": expires, "receiptId": receipt_id,
+                "observationBinding": {**lease_evidence, "leaseReceiptId": receipt_id}}
     except Exception:
         if con.in_transaction:
             con.rollback()

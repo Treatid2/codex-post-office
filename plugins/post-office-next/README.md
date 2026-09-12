@@ -119,9 +119,13 @@ receipt. Automatic review uses `scripts/auto_review.py` as the attested backend.
 boundary, queue states, reviewer lifecycle, attention, continuation work, migration evidence, and
 unexpected Drive access. Migration findings are split into actionable open findings and known
 historical import evidence; historical classifications remain append-only evidence rather than an
-operational blockage. Continuation reconciliation accepts positive `performedReceiptId`
-evidence or explicit `actionAbsent: true` evidence. With neither, the expired lease remains held
-and an attention item is recorded; it is never blindly replayed.
+operational blockage. Continuation reconciliation accepts positive `performedReceiptId` evidence
+or explicit `actionAbsent: true` evidence only when the observation also includes the exact
+`observationBinding` returned by that lease claim as `leaseBinding`, plus an `observedAt` timestamp
+at or after that lease's expiry. The binding names the continuation, attempt count, owner, token
+digest, evidence root, and append-only lease receipt. It cannot be reused after the continuation is
+leased again. With absent, stale, future-dated, or mismatched evidence, the expired lease remains
+held and an attention item is recorded; it is never blindly replayed.
 
 Every operational command emits one JSON result on stdout and returns a non-zero exit code with a
 stable, versioned diagnostic on failure, including command-line parse failures. `--help` is the sole

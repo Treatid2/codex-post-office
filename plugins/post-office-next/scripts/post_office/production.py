@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .canonical import require_new_output_file, sha256_file, sha256_json, write_json
-from .database import inspect_database
+from .database import inspect_connection, inspect_database
 from .diagnostics import PostOfficeError
 from .kernel import (
     bind_kernel_credential,
@@ -53,10 +53,12 @@ COURIER_OPERATIONS = [
 
 def production_status(database: Path, plugin_root: Path) -> dict[str, Any]:
     """Return a secret-free operational snapshot suitable for bounded sweeps."""
-    inspection = inspect_database(database, plugin_root)
+    database = database.resolve(strict=False)
     con = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
     try:
+        con.execute("BEGIN")
+        inspection = inspect_connection(con, database, plugin_root)
         kernel = con.execute(
             "SELECT mode,status,authority_state,contract_root,bootstrapped_at "
             "FROM kernel_instances WHERE instance_id='PON-KERNEL'"
@@ -145,6 +147,8 @@ def production_status(database: Path, plugin_root: Path) -> dict[str, Any]:
             "secretsIncluded": False,
         }
     finally:
+        if con.in_transaction:
+            con.rollback()
         con.close()
 
 

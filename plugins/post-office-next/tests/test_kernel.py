@@ -11,6 +11,7 @@ import tempfile
 import unittest
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -2009,18 +2010,74 @@ class OperationalKernelTests(unittest.TestCase):
                 )
             finally:
                 con.close()
+            first_observation = {
+                "actionAbsent": True,
+                "evidenceId": "PON-ABSENCE-EVIDENCE-001",
+                "observedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "leaseBinding": claim["observationBinding"],
+            }
             recovered = reconcile_continuations(
                 database,
                 courier_credential,
                 PLUGIN_ROOT,
+                observations={claim["continuationId"]: first_observation},
+            )
+            self.assertEqual(recovered["recoveredContinuationIds"], [claim["continuationId"]])
+            second_claim = claim_next_continuation(
+                database,
+                courier_credential,
+                PLUGIN_ROOT,
+                continuation_kind="BROWSER_COLLECTION",
+                lease_seconds=60,
+            )
+            con = sqlite3.connect(database)
+            try:
+                con.execute(
+                    "UPDATE continuation_items SET lease_expires_at='2000-01-01T00:00:00Z' WHERE continuation_id=?",
+                    (second_claim["continuationId"],),
+                )
+                con.commit()
+            finally:
+                con.close()
+            stale = reconcile_continuations(
+                database,
+                courier_credential,
+                PLUGIN_ROOT,
+                observations={second_claim["continuationId"]: first_observation},
+            )
+            self.assertEqual(stale["recoveredContinuationIds"], [])
+            self.assertEqual(len(stale["attentionIds"]), 1)
+            stale_completion = reconcile_continuations(
+                database,
+                courier_credential,
+                PLUGIN_ROOT,
                 observations={
-                    claim["continuationId"]: {
-                        "actionAbsent": True,
-                        "evidenceId": "PON-ABSENCE-EVIDENCE-001",
+                    second_claim["continuationId"]: {
+                        **first_observation,
+                        "performedReceiptId": "PON-UNRELATED-PERFORMED-RECEIPT",
+                        "actionAbsent": False,
                     }
                 },
             )
-            self.assertEqual(recovered["recoveredContinuationIds"], [claim["continuationId"]])
+            self.assertEqual(stale_completion["completedContinuationIds"], [])
+            self.assertEqual(len(stale_completion["attentionIds"]), 1)
+            current_recovery = reconcile_continuations(
+                database,
+                courier_credential,
+                PLUGIN_ROOT,
+                observations={
+                    second_claim["continuationId"]: {
+                        "actionAbsent": True,
+                        "evidenceId": "PON-ABSENCE-EVIDENCE-002",
+                        "observedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                        "leaseBinding": second_claim["observationBinding"],
+                    }
+                },
+            )
+            self.assertEqual(
+                current_recovery["recoveredContinuationIds"],
+                [second_claim["continuationId"]],
+            )
             claim = claim_next_continuation(
                 database,
                 courier_credential,

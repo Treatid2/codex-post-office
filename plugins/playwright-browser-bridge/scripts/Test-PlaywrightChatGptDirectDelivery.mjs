@@ -35,7 +35,9 @@ class Locator {
     if (this.kind === "login" || this.kind === "none") return 0;
     return 1;
   }
-  async waitFor() {}
+  async waitFor() {
+    if (this.kind === "add") throw new Error("add button must not gate a native file input");
+  }
   async setInputFiles() {}
   async fill() {}
   async evaluate() { return true; }
