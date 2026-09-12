@@ -204,6 +204,35 @@ def _attention(
     return attention_id
 
 
+def _resolve_superseded_transport_attention(
+    con: sqlite3.Connection,
+    attempt: sqlite3.Row,
+    recorded_at: str,
+) -> None:
+    """Resolve stale dispatch attention once a retained retry descendant is receipted."""
+    previous_id = attempt["canonical_attempt_id"]
+    seen: set[str] = set()
+    while previous_id and previous_id not in seen and len(seen) < 32:
+        seen.add(str(previous_id))
+        previous = con.execute(
+            "SELECT * FROM transport_attempts WHERE transport_attempt_id=?",
+            (previous_id,),
+        ).fetchone()
+        if not previous:
+            break
+        previous_dispatch = con.execute(
+            "SELECT dispatch_id FROM transport_dispatches WHERE transport_attempt_id=?",
+            (previous_id,),
+        ).fetchone()
+        if previous_dispatch:
+            con.execute(
+                """UPDATE attention_items SET state='RESOLVED',resolved_at=?
+                   WHERE entity_type='TransportDispatch' AND entity_id=? AND state='OPEN'""",
+                (recorded_at, previous_dispatch["dispatch_id"]),
+            )
+        previous_id = previous["canonical_attempt_id"]
+
+
 def reconcile_transport(
     database_path: Path, credential_path: Path, plugin_root: Path,
     *, observations: dict[str, dict[str, Any]] | None = None,
@@ -310,6 +339,10 @@ def reconcile_transport(
                     con, entity_type="TransportDispatch", entity_id=dispatch["dispatch_id"], severity="ERROR",
                     reason_code="PON_OBSERVATION_AMBIGUOUS", details={"observableMarker": dispatch["observable_marker"]}, recorded_at=now,
                 ))
+        for receipted_attempt in con.execute(
+            "SELECT * FROM transport_attempts WHERE state='RECEIPTED' AND canonical_attempt_id IS NOT NULL"
+        ):
+            _resolve_superseded_transport_attention(con, receipted_attempt, now)
         con.commit()
         return {"ok": True, "createdDispatchIds": created, "recoveredDispatchIds": recovered,
                 "attentionIds": attention_ids, "stateRoot": _operational_state(con)["operationalStateRoot"]}
@@ -569,6 +602,7 @@ def _complete_locked(
     event = append_hub_event(con, request=request, capability_id=capability["capability_id"], aggregate_version=version + 1, before_root=before_root, after_root=after_root, event_result={"state": "DELIVERED", "dispatchId": dispatch["dispatch_id"], "observedReceiptId": evidence["receiptId"]}, occurred_at=recorded_at)
     receipt_id = _record_runtime_receipt(con, dispatch["dispatch_id"], "DELIVERED", evidence, recorded_at)
     con.execute("UPDATE attention_items SET state='RESOLVED',resolved_at=? WHERE entity_type='TransportDispatch' AND entity_id=? AND state='OPEN'", (recorded_at, dispatch["dispatch_id"]))
+    _resolve_superseded_transport_attention(con, attempt, recorded_at)
     return {"eventId": event["eventId"], "runtimeReceiptId": receipt_id, "messageId": message["message_id"]}
 
 
@@ -755,7 +789,12 @@ def record_recovered_transport_receipt(
         con.close()
 
 
-def _validate_manifest_backed_return(data: bytes, source_message_id: str) -> dict[str, Any]:
+def _validate_manifest_backed_return(
+    data: bytes,
+    source_message_id: str,
+    *,
+    correlation_message_ids: list[str] | None = None,
+) -> dict[str, Any]:
     """Validate one browser-produced ZIP without extracting it.
 
     The current browser mailbox contract uses a single Markdown package-member manifest.  The
@@ -784,14 +823,21 @@ def _validate_manifest_backed_return(data: bytes, source_message_id: str) -> dic
                 "PON_CUSTODY_NOT_VERIFIED", "Browser return ZIP integrity failed", {"member": bad_member}
             )
         markdown_manifest_names = [
-            name for name in names if "package-member-manifest" in name.lower() and name.lower().endswith(".md")
+            name for name in names
+            if name.lower().endswith(".md")
+            and (
+                "package-member-manifest" in name.lower()
+                or "package-manifest" in name.lower()
+                or "package_manifest" in name.lower()
+            )
         ]
         json_manifest_names = [
             name for name in names
             if name.lower().endswith(".json")
             and ("package-manifest" in name.lower() or "package_manifest" in name.lower())
         ]
-        manifest_names = markdown_manifest_names + json_manifest_names
+        root_manifest_names = [name for name in names if name.lower() == "manifest.json"]
+        manifest_names = markdown_manifest_names + json_manifest_names + root_manifest_names
         if len(manifest_names) != 1:
             raise PostOfficeError(
                 "PON_CUSTODY_NOT_VERIFIED",
@@ -819,6 +865,33 @@ def _validate_manifest_backed_return(data: bytes, source_message_id: str) -> dic
             except json.JSONDecodeError as exc:
                 raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Browser return JSON manifest is invalid", {}) from exc
             members = manifest_json.get("members") if isinstance(manifest_json, dict) else None
+            if manifest_name in root_manifest_names:
+                members = manifest_json.get("files") if isinstance(manifest_json, dict) else None
+                declared_count = manifest_json.get("fileCount") if isinstance(manifest_json, dict) else None
+                declared_bytes = manifest_json.get("payloadBytes") if isinstance(manifest_json, dict) else None
+                aggregate_keys_present = any(
+                    key in manifest_json
+                    for key in ("manifestSelfExcluded", "fileCount", "payloadBytes")
+                ) if isinstance(manifest_json, dict) else False
+                comment_match = re.fullmatch(
+                    rb"Manifest-SHA256:\s*([0-9a-fA-F]{64})\s*",
+                    archive.comment,
+                )
+                comment_authenticated = bool(
+                    comment_match
+                    and comment_match.group(1).decode("ascii").lower() == sha256_bytes(manifest_bytes)
+                )
+                aggregate_authenticated = (
+                    manifest_json.get("manifestSelfExcluded") is True
+                    and isinstance(declared_count, int)
+                    and isinstance(declared_bytes, int)
+                ) if isinstance(manifest_json, dict) else False
+                if not aggregate_authenticated and not comment_authenticated:
+                    raise PostOfficeError(
+                        "PON_CUSTODY_NOT_VERIFIED",
+                        "Root browser-return manifest lacks verified self-exclusion metadata",
+                        {},
+                    )
             if not isinstance(members, list):
                 raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Browser return JSON manifest lacks members", {})
             listed = []
@@ -831,6 +904,16 @@ def _validate_manifest_backed_return(data: bytes, source_message_id: str) -> dic
                 ):
                     raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Browser return JSON manifest member is invalid", {})
                 listed.append((member["path"], member["bytes"], str(member["sha256"]).lower()))
+            if manifest_name in root_manifest_names and aggregate_keys_present and (
+                not aggregate_authenticated
+                or declared_count != len(listed)
+                or declared_bytes != sum(size for _, size, _ in listed)
+            ):
+                raise PostOfficeError(
+                    "PON_CUSTODY_NOT_VERIFIED",
+                    "Root browser-return manifest aggregate metadata differs",
+                    {},
+                )
         if not listed or len(listed) != len(names) - 1:
             raise PostOfficeError(
                 "PON_CUSTODY_NOT_VERIFIED",
@@ -849,27 +932,76 @@ def _validate_manifest_backed_return(data: bytes, source_message_id: str) -> dic
                 raise PostOfficeError(
                     "PON_CUSTODY_NOT_VERIFIED", "Browser return member differs from its manifest", {"member": member_path}
                 )
-        correlation_found = False
+        allowed_correlations = list(dict.fromkeys([
+            source_message_id,
+            *(correlation_message_ids or []),
+        ]))
+        correlation_message_id: str | None = None
         for info in infos:
             if info.file_size > 4 * 1024 * 1024 or not info.filename.lower().endswith((".md", ".json", ".txt", ".yaml", ".yml")):
                 continue
             try:
-                if source_message_id in archive.read(info.filename).decode("utf-8-sig"):
-                    correlation_found = True
+                member_text = archive.read(info.filename).decode("utf-8-sig")
+                correlation_message_id = next(
+                    (item for item in allowed_correlations if item in member_text),
+                    None,
+                )
+                if correlation_message_id:
                     break
             except UnicodeDecodeError:
                 continue
-        if not correlation_found:
+        if not correlation_message_id:
             raise PostOfficeError(
-                "PON_OBSERVATION_MISMATCH", "Browser return does not identify its source message", {"sourceMessageId": source_message_id}
+                "PON_OBSERVATION_MISMATCH",
+                "Browser return does not identify its source message or a verified same-cycle ancestor",
+                {"sourceMessageId": source_message_id},
             )
         return {
             "archiveMemberCount": len(names),
+            "correlationMessageId": correlation_message_id,
             "manifestListedMemberCount": len(listed),
             "manifestName": manifest_name,
             "manifestSha256": sha256_bytes(manifest_bytes),
             "zipIntegrity": "PASS",
         }
+
+
+def _browser_return_correlation_ids(
+    con: sqlite3.Connection,
+    source_message_id: str,
+) -> list[str]:
+    """Return a bounded RESPONSE_TO ancestry confined to the source semantic cycle."""
+    source = con.execute(
+        "SELECT semantic_cycle_id FROM semantic_messages WHERE message_id=?",
+        (source_message_id,),
+    ).fetchone()
+    if not source:
+        return []
+    cycle_id = source["semantic_cycle_id"]
+    seen = {source_message_id}
+    frontier = [source_message_id]
+    ancestors: list[str] = []
+    while frontier and len(seen) <= 32:
+        current = frontier.pop(0)
+        for relation in con.execute(
+            """SELECT related_message_id FROM message_relations
+               WHERE message_id=? AND relation_kind='RESPONSE_TO'
+               ORDER BY related_message_id""",
+            (current,),
+        ):
+            related_id = str(relation["related_message_id"])
+            if related_id in seen:
+                continue
+            related = con.execute(
+                "SELECT semantic_cycle_id FROM semantic_messages WHERE message_id=?",
+                (related_id,),
+            ).fetchone()
+            if not related or related["semantic_cycle_id"] != cycle_id:
+                continue
+            seen.add(related_id)
+            ancestors.append(related_id)
+            frontier.append(related_id)
+    return ancestors
 
 
 def _browser_return_source(
@@ -1189,8 +1321,6 @@ def ingest_collected_browser_return(
         raise PostOfficeError("PON_INPUT_INVALID", "Collected browser-return file is unavailable", {}) from exc
     if len(data) != expected_size or sha256_bytes(data) != expected_sha256:
         raise PostOfficeError("PON_OBSERVATION_MISMATCH", "Collected browser-return bytes differ from the manifest", {})
-    archive_evidence = _validate_manifest_backed_return(data, source_message_id)
-
     con = _open_writer(database_path, plugin_root)
     target: Path | None = None
     target_created = False
@@ -1198,6 +1328,11 @@ def ingest_collected_browser_return(
         capability, actor = _courier(con, credential_path)
         source, source_mailbox, source_endpoint, _, destination_mailbox = _browser_return_source(
             con, source_message_id, thread_id
+        )
+        archive_evidence = _validate_manifest_backed_return(
+            data,
+            source_message_id,
+            correlation_message_ids=_browser_return_correlation_ids(con, source_message_id),
         )
         if (
             source_mailbox["mailbox_id"] != manifest.get("mailboxId")
@@ -1446,7 +1581,6 @@ def ingest_recovered_browser_return(
             {"expectedSha256": expected_sha256, "observedSha256": observed_sha256,
              "expectedSizeBytes": expected_size_bytes, "observedSizeBytes": len(data)},
         )
-    archive_evidence = _validate_manifest_backed_return(data, source_message_id)
     observed_receipt_id = (
         f"chatgpt-shortcut:{destination_thread_id}:{destination_turn_id}:sha256:{expected_sha256}"
     )
@@ -1478,6 +1612,11 @@ def ingest_recovered_browser_return(
         if not source_endpoint or not destination_endpoint or len(destination_mailboxes) != 1:
             raise PostOfficeError("PON_INPUT_INVALID", "Recovered browser-return endpoint mapping is unavailable", {})
         destination_mailbox = destination_mailboxes[0]
+        archive_evidence = _validate_manifest_backed_return(
+            data,
+            source_message_id,
+            correlation_message_ids=_browser_return_correlation_ids(con, source_message_id),
+        )
         source_scope = json.loads(source_endpoint["access_scope_json"])
         destination_scope = json.loads(destination_endpoint["access_scope_json"])
         if _destination_from_scope(source_scope)["destinationThreadId"] != source_thread_id:

@@ -36,6 +36,8 @@ from post_office.kernel import (  # noqa: E402
 )
 from post_office.runtime import (  # noqa: E402
     _continuation_destination,
+    _resolve_superseded_transport_attention,
+    _validate_manifest_backed_return,
     claim_next_continuation,
     claim_next_review,
     claim_next_transport,
@@ -58,6 +60,123 @@ from post_office.runtime import (  # noqa: E402
 
 
 class OperationalKernelTests(unittest.TestCase):
+    def test_receipted_retry_resolves_superseded_dispatch_attention(self) -> None:
+        con = sqlite3.connect(":memory:")
+        con.row_factory = sqlite3.Row
+        try:
+            con.execute(
+                "CREATE TABLE transport_attempts(transport_attempt_id TEXT PRIMARY KEY, canonical_attempt_id TEXT)"
+            )
+            con.execute(
+                "CREATE TABLE transport_dispatches(dispatch_id TEXT PRIMARY KEY, transport_attempt_id TEXT)"
+            )
+            con.execute(
+                "CREATE TABLE attention_items(entity_type TEXT, entity_id TEXT, state TEXT, resolved_at TEXT)"
+            )
+            con.execute("INSERT INTO transport_attempts VALUES('ATTEMPT-OLD',NULL)")
+            con.execute("INSERT INTO transport_attempts VALUES('ATTEMPT-NEW','ATTEMPT-OLD')")
+            con.execute("INSERT INTO transport_dispatches VALUES('DISPATCH-OLD','ATTEMPT-OLD')")
+            con.execute("INSERT INTO attention_items VALUES('TransportDispatch','DISPATCH-OLD','OPEN',NULL)")
+            current = con.execute(
+                "SELECT * FROM transport_attempts WHERE transport_attempt_id='ATTEMPT-NEW'"
+            ).fetchone()
+            _resolve_superseded_transport_attention(con, current, "2026-09-12T05:00:00Z")
+            state, resolved_at = con.execute(
+                "SELECT state,resolved_at FROM attention_items"
+            ).fetchone()
+        finally:
+            con.close()
+        self.assertEqual(state, "RESOLVED")
+        self.assertEqual(resolved_at, "2026-09-12T05:00:00Z")
+
+    def test_root_browser_return_manifest_rejects_incorrect_aggregate_metadata(self) -> None:
+        response = b"in_reply_to: DEMO-C2C-000001\nresult: COMPLETE\n"
+        manifest = json.dumps({
+            "manifestSelfExcluded": True,
+            "fileCount": 1,
+            "payloadBytes": len(response) + 1,
+            "files": [{
+                "path": "response.md",
+                "bytes": len(response),
+                "sha256": hashlib.sha256(response).hexdigest(),
+            }],
+        }).encode("utf-8")
+        with tempfile.TemporaryDirectory() as temporary:
+            archive_path = Path(temporary) / "return.zip"
+            with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("response.md", response)
+                archive.writestr("MANIFEST.json", manifest)
+            with self.assertRaises(PostOfficeError) as raised:
+                _validate_manifest_backed_return(archive_path.read_bytes(), "DEMO-C2C-000001")
+        self.assertEqual(raised.exception.code, "PON_CUSTODY_NOT_VERIFIED")
+
+    def test_browser_return_rejects_ambiguous_supported_manifests(self) -> None:
+        response = b"in_reply_to: DEMO-C2C-000001\nresult: COMPLETE\n"
+        member = {
+            "path": "response.md",
+            "bytes": len(response),
+            "sha256": hashlib.sha256(response).hexdigest(),
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            archive_path = Path(temporary) / "return.zip"
+            with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("response.md", response)
+                archive.writestr("PACKAGE-MANIFEST.json", json.dumps({"members": [member]}))
+                archive.writestr("MANIFEST.json", json.dumps({
+                    "manifestSelfExcluded": True,
+                    "fileCount": 2,
+                    "payloadBytes": len(response),
+                    "files": [member],
+                }))
+            with self.assertRaises(PostOfficeError) as raised:
+                _validate_manifest_backed_return(archive_path.read_bytes(), "DEMO-C2C-000001")
+        self.assertEqual(raised.exception.code, "PON_CUSTODY_NOT_VERIFIED")
+
+    def test_root_browser_return_manifest_accepts_matching_zip_comment(self) -> None:
+        response = b"in_reply_to: DEMO-C2C-000001\nresult: COMPLETE\n"
+        manifest = json.dumps({
+            "files": [{
+                "path": "response.md",
+                "bytes": len(response),
+                "sha256": hashlib.sha256(response).hexdigest(),
+            }],
+        }).encode("utf-8")
+        with tempfile.TemporaryDirectory() as temporary:
+            archive_path = Path(temporary) / "return.zip"
+            with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("response.md", response)
+                archive.writestr("MANIFEST.json", manifest)
+                archive.comment = (
+                    "Manifest-SHA256: " + hashlib.sha256(manifest).hexdigest()
+                ).encode("ascii")
+            verified = _validate_manifest_backed_return(
+                archive_path.read_bytes(), "DEMO-C2C-000001"
+            )
+        self.assertEqual(verified["manifestName"], "MANIFEST.json")
+        self.assertEqual(verified["manifestListedMemberCount"], 1)
+
+    def test_browser_return_accepts_a_verified_ancestor_correlation(self) -> None:
+        response = b"governing_handoff: DEMO-C2C-000006\nresult: REVISION\n"
+        manifest_name = "DEMO_Package-Manifest.json"
+        manifest = json.dumps({
+            "members": [{
+                "path": "response.md",
+                "bytes": len(response),
+                "sha256": hashlib.sha256(response).hexdigest(),
+            }],
+        }).encode("utf-8")
+        with tempfile.TemporaryDirectory() as temporary:
+            archive_path = Path(temporary) / "return.zip"
+            with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("response.md", response)
+                archive.writestr(manifest_name, manifest)
+            verified = _validate_manifest_backed_return(
+                archive_path.read_bytes(),
+                "DEMO-C2C-000007",
+                correlation_message_ids=["DEMO-C2C-000006"],
+            )
+        self.assertEqual(verified["correlationMessageId"], "DEMO-C2C-000006")
+
     def test_expired_author_capability_cannot_create_actor(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -171,7 +290,10 @@ class OperationalKernelTests(unittest.TestCase):
             collected_response_hash = hashlib.sha256(collected_response).hexdigest()
             collected_manifest = json.dumps({
                 "in_response_to": "DEMO-C2C-000001",
-                "members": [{
+                "manifestSelfExcluded": True,
+                "fileCount": 1,
+                "payloadBytes": len(collected_response),
+                "files": [{
                     "path": "DEMO_Collected-Response.md",
                     "bytes": len(collected_response),
                     "sha256": collected_response_hash,
@@ -180,7 +302,7 @@ class OperationalKernelTests(unittest.TestCase):
             collected_archive = root / "DEMO_COLLECTED_BROWSER_RETURN_v01.zip"
             with zipfile.ZipFile(collected_archive, "w", compression=zipfile.ZIP_DEFLATED) as archive:
                 archive.writestr("DEMO_Collected-Response.md", collected_response)
-                archive.writestr("DEMO_Package-Manifest_v02.json", collected_manifest)
+                archive.writestr("MANIFEST.json", collected_manifest)
             collected_data = collected_archive.read_bytes()
             collected_hash = hashlib.sha256(collected_data).hexdigest()
             collection = issue_browser_return_collection_manifest(
