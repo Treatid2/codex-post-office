@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import {
   CollectionError,
   correlateOriginMessages,
+  isChromeCollisionFilename,
   publicCollectionFailure,
   selectLibraryCandidates,
 } from "./playwright_chatgpt_library.mjs";
@@ -294,21 +295,6 @@ async function collectFromChatGptLibrary(context, conversationPayload) {
   }
 }
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function isChromeCollisionFilename(suggestedFilename, expectedFilename) {
-  if (suggestedFilename === expectedFilename) return true;
-  if (path.basename(suggestedFilename) !== suggestedFilename) return false;
-  const extension = path.extname(expectedFilename);
-  const stem = extension ? expectedFilename.slice(0, -extension.length) : expectedFilename;
-  const collisionPattern = new RegExp(
-    `^${escapeRegExp(stem)} ?\\([1-9]\\d*\\)${escapeRegExp(extension)}$`,
-  );
-  return collisionPattern.test(suggestedFilename);
-}
-
 async function findManifestSourceTurn(page) {
   const sourceTurn = page.locator(`[data-message-id="${manifest.sourceTurnId}"]`);
   const findUnique = async () => {
@@ -455,7 +441,7 @@ async function main() {
           const url = new URL(request.url());
           return url.origin === "https://chatgpt.com" &&
             url.pathname === "/backend-api/estuary/content" &&
-            url.searchParams.get("fn") === attachmentName;
+            isChromeCollisionFilename(url.searchParams.get("fn") ?? "", attachmentName);
         } catch { return false; }
       }, { timeout: eventTimeout })
         .then((request) => ({ kind: "request", request }))
@@ -476,7 +462,7 @@ async function main() {
       const temporaryPath = path.join(attemptRoot, attachmentName);
       if (attachmentEvent.kind === "request") {
         const signedUrl = new URL(attachmentEvent.request.url());
-        if (signedUrl.searchParams.get("fn") !== attachmentName) {
+        if (!isChromeCollisionFilename(signedUrl.searchParams.get("fn") ?? "", attachmentName)) {
           throw new Error("Signed attachment filename changed");
         }
         const response = await context.request.get(signedUrl.href, {
@@ -523,7 +509,17 @@ async function main() {
       }
     }
   }
-  const libraryCollection = await collectFromChatGptLibrary(context, conversationPayload);
+  let libraryCollection;
+  try {
+    libraryCollection = await collectFromChatGptLibrary(context, conversationPayload);
+  } catch (error) {
+    const failure = publicCollectionFailure(error);
+    throw new CollectionError(failure.errorCode, failure.error, {
+      ...failure.details,
+      matchingControls: candidates.length,
+      directControlFailures: mismatches,
+    });
+  }
   console.log(JSON.stringify({
     ok: true,
     ...libraryCollection,

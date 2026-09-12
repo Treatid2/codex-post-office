@@ -4,6 +4,26 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 const libraryFilePattern = /^libfile_[A-Za-z0-9]+$/;
 const filePattern = /^file_[A-Za-z0-9]+$/;
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function isChromeCollisionFilename(observedFilename, expectedFilename) {
+  if (observedFilename === expectedFilename) return true;
+  if (typeof observedFilename !== "string" || pathBasename(observedFilename) !== observedFilename) return false;
+  const extensionIndex = expectedFilename.lastIndexOf(".");
+  const extension = extensionIndex > 0 ? expectedFilename.slice(extensionIndex) : "";
+  const stem = extension ? expectedFilename.slice(0, -extension.length) : expectedFilename;
+  const collisionPattern = new RegExp(
+    `^${escapeRegExp(stem)} ?\\([1-9]\\d*\\)${escapeRegExp(extension)}$`,
+  );
+  return collisionPattern.test(observedFilename);
+}
+
+function pathBasename(value) {
+  return value.split(/[\\/]/).at(-1);
+}
+
 export class CollectionError extends Error {
   constructor(code, message, details = {}) {
     super(message);

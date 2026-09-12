@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import {
   CollectionError,
   correlateOriginMessages,
+  isChromeCollisionFilename,
   messageText,
   publicCollectionFailure,
   selectLibraryCandidates,
@@ -91,6 +92,11 @@ assert.equal(
   "EXACT_CODE",
 );
 assert.equal(publicCollectionFailure(new Error("unexpected")).errorCode, "ATTACHMENT_COLLECTION_FAILED");
+assert.equal(isChromeCollisionFilename("RESULT.zip", "RESULT.zip"), true);
+assert.equal(isChromeCollisionFilename("RESULT(1).zip", "RESULT.zip"), true);
+assert.equal(isChromeCollisionFilename("RESULT (12).zip", "RESULT.zip"), true);
+assert.equal(isChromeCollisionFilename("OTHER(1).zip", "RESULT.zip"), false);
+assert.equal(isChromeCollisionFilename("folder/RESULT(1).zip", "RESULT.zip"), false);
 
 console.log(JSON.stringify({
   ok: true,
@@ -98,4 +104,5 @@ console.log(JSON.stringify({
   sameTurnCorrelation: true,
   exactLibrarySelection: true,
   failClosedErrors: true,
+  chromeCollisionFilenames: true,
 }));

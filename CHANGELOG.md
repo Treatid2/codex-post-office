@@ -4,6 +4,11 @@ All notable changes to this repository will be documented here.
 
 ## Unreleased
 
+- Hardened exact browser-result collection for ChatGPT signed downloads whose
+  `fn` parameter contains Chrome's local collision suffix. The collector now
+  applies the same bounded filename rule used for browser download events and
+  still requires the manifest-bound byte count and SHA-256 before retention.
+
 - Closed the post-Drive review activation gap: vNext now issues an immutable activation manifest
   containing exactly one locally retained, size-and-SHA-256 verified review package, uploads it in
   the same reviewer turn, and records the exact visible source-message receipt idempotently.
