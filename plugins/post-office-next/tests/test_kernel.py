@@ -1775,11 +1775,45 @@ class OperationalKernelTests(unittest.TestCase):
                 con.commit()
             finally:
                 con.close()
+            ambiguous = reconcile_transport(
+                database, courier_credential, PLUGIN_ROOT,
+            )
+            self.assertEqual(ambiguous["recoveredDispatchIds"], [])
+            con = sqlite3.connect(database)
+            try:
+                self.assertEqual(
+                    con.execute(
+                        "SELECT state,last_error_code FROM transport_dispatches WHERE dispatch_id=?",
+                        (claim["dispatchId"],),
+                    ).fetchone(),
+                    ("RECONCILIATION_REQUIRED", "PON_OBSERVATION_AMBIGUOUS"),
+                )
+            finally:
+                con.close()
             recovered = reconcile_transport(
                 database, courier_credential, PLUGIN_ROOT,
                 observations={claim["dispatchId"]: {"markerAbsent": True}},
             )
             self.assertEqual(recovered["recoveredDispatchIds"], [claim["dispatchId"]])
+            con = sqlite3.connect(database)
+            try:
+                self.assertEqual(
+                    con.execute(
+                        "SELECT state,last_error_code FROM transport_dispatches WHERE dispatch_id=?",
+                        (claim["dispatchId"],),
+                    ).fetchone(),
+                    ("READY", None),
+                )
+                self.assertEqual(
+                    con.execute(
+                        """SELECT COUNT(*) FROM attention_items
+                           WHERE entity_type='TransportDispatch' AND entity_id=? AND state='OPEN'""",
+                        (claim["dispatchId"],),
+                    ).fetchone()[0],
+                    0,
+                )
+            finally:
+                con.close()
             claim = claim_next_transport(database, courier_credential, PLUGIN_ROOT, lease_seconds=60)
             delivered = complete_transport(
                 database, courier_credential, PLUGIN_ROOT,

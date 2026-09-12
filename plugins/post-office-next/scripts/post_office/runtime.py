@@ -319,7 +319,16 @@ def reconcile_transport(
             "SELECT * FROM transport_dispatches WHERE state='LEASED' AND lease_expires_at<=? ORDER BY lease_expires_at,dispatch_id",
             (now,),
         ))
-        for dispatch in expired:
+        awaiting_evidence = []
+        if observations:
+            awaiting_evidence = list(con.execute(
+                "SELECT * FROM transport_dispatches WHERE state='RECONCILIATION_REQUIRED' ORDER BY updated_at,dispatch_id"
+            ))
+            awaiting_evidence = [
+                dispatch for dispatch in awaiting_evidence
+                if str(dispatch["dispatch_id"]) in observations
+            ]
+        for dispatch in [*expired, *awaiting_evidence]:
             observation = observations.get(str(dispatch["dispatch_id"]))
             if observation and observation.get("marker") == dispatch["observable_marker"] and observation.get("receiptId"):
                 _complete_locked(con, capability, actor, dispatch, observation, now)
@@ -332,8 +341,13 @@ def reconcile_transport(
                     (now, now, dispatch["dispatch_id"]),
                 )
                 _record_runtime_receipt(con, dispatch["dispatch_id"], "RECOVERED", {"outcome": "SAFE_REQUEUE", "markerAbsent": True}, now)
+                con.execute(
+                    """UPDATE attention_items SET state='RESOLVED',resolved_at=?
+                       WHERE entity_type='TransportDispatch' AND entity_id=? AND state='OPEN'""",
+                    (now, dispatch["dispatch_id"]),
+                )
                 recovered.append(str(dispatch["dispatch_id"]))
-            else:
+            elif dispatch["state"] == "LEASED":
                 con.execute("UPDATE transport_dispatches SET state='RECONCILIATION_REQUIRED',last_error_code='PON_OBSERVATION_AMBIGUOUS',updated_at=? WHERE dispatch_id=?", (now, dispatch["dispatch_id"]))
                 attention_ids.append(_attention(
                     con, entity_type="TransportDispatch", entity_id=dispatch["dispatch_id"], severity="ERROR",

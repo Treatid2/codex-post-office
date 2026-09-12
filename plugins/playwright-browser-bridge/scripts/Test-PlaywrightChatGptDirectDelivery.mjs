@@ -19,6 +19,7 @@ await fs.mkdir(moduleRoot, { recursive: true });
 await fs.writeFile(path.join(moduleRoot, "package.json"), JSON.stringify({ type: "module" }));
 await fs.writeFile(path.join(moduleRoot, "index.mjs"), `
 let markerVisible = false;
+let menuVisible = false;
 class Locator {
   constructor(kind) { this.kind = kind; }
   filter() { return this; }
@@ -36,14 +37,21 @@ class Locator {
     return 1;
   }
   async waitFor() {
-    if (this.kind === "add") throw new Error("add button must not gate a native file input");
+    if (this.kind === "upload" && !menuVisible) throw new Error("upload menu is not visible");
   }
-  async setInputFiles() {}
+  async setInputFiles() {
+    if (this.kind === "file") throw new Error("page-wide file input must not be used");
+  }
   async fill() {}
   async evaluate() { return true; }
   async press(key) { if (key === "Enter") markerVisible = true; }
-  async click() {}
-  async isVisible() { return this.kind !== "none"; }
+  async click() {
+    if (this.kind === "add") menuVisible = true;
+  }
+  async isVisible() {
+    if (this.kind === "upload") return menuVisible;
+    return this.kind !== "none";
+  }
   async isEditable() { return this.kind === "composer"; }
   async isEnabled() { return true; }
 }
@@ -52,6 +60,10 @@ class Page {
   async goto() {}
   async waitForLoadState() {}
   async waitForTimeout() {}
+  async waitForEvent(name) {
+    if (name !== "filechooser") throw new Error("Unexpected event: " + name);
+    return { async setFiles() {} };
+  }
   locator(selector) {
     if (selector === '[data-message-id]') return new Locator("messages");
     if (selector === 'input[type="file"]') return new Locator("file");
@@ -63,6 +75,7 @@ class Page {
     if (role === "button" && options.name === "Log in") return new Locator("login");
     if (role === "textbox") return new Locator("composer");
     if (role === "button") return new Locator("send");
+    if (role === "menuitem") return new Locator("upload");
     return new Locator("none");
   }
   getByText() { return new Locator("attachment"); }
@@ -111,7 +124,7 @@ try {
   assert.equal(receipt.ok, true);
   assert.equal(receipt.attachmentCount, 1);
   assert.match(receipt.sendDiscovery, /enter-fallback/);
-  console.log(JSON.stringify({ ok: true, nativeFileInput: true, enterFallback: true }));
+  console.log(JSON.stringify({ ok: true, composerChooser: true, ignoredPageWideFileInput: true, enterFallback: true }));
 } finally {
   await fs.rm(testRoot, { recursive: true, force: true });
 }

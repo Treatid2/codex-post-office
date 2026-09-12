@@ -117,35 +117,25 @@ async function composerStillContainsMarker(composer) {
 
 async function setAttachments(page) {
   const paths = manifest.attachments.map((item) => path.resolve(item.path));
-  const fileInput = page.locator('input[type="file"]').first();
-  const setNativeFileInput = async () => {
-    if (await fileInput.count() === 0) return false;
-    await fileInput.setInputFiles(paths, { timeout: timeoutMs });
-    return true;
-  };
   const add = page.locator([
     'button[data-testid="composer-plus-btn"]',
     'button[aria-label="Add files and more"]',
     'button[aria-label="Attach files"]',
   ].join(", ")).first();
-  let attached = await setNativeFileInput();
-  if (!attached) {
-    await add.waitFor({ state: "attached", timeout: timeoutMs });
+  const upload = page.getByRole("menuitem")
+    .filter({ hasText: /^(Upload from computer|Upload files|Add photos & files)$/ })
+    .or(page.getByText(/^(Upload from computer|Upload files|Add photos & files)$/))
+    .first();
+  if (!await upload.isVisible().catch(() => false)) {
+    await add.waitFor({ state: "visible", timeout: timeoutMs });
     await add.click({ force: true, timeout: timeoutMs });
     await page.waitForTimeout(250);
-    attached = await setNativeFileInput();
   }
-  if (!attached) {
-    const upload = page.getByRole("menuitem")
-      .filter({ hasText: /^(Upload from computer|Upload files|Add photos & files)$/ })
-      .or(page.getByText(/^(Upload from computer|Upload files|Add photos & files)$/))
-      .first();
-    await upload.waitFor({ state: "attached", timeout: timeoutMs });
-    const chooserPromise = page.waitForEvent("filechooser", { timeout: timeoutMs });
-    await upload.click({ force: true, timeout: timeoutMs });
-    const chooser = await chooserPromise;
-    await chooser.setFiles(paths, { timeout: timeoutMs });
-  }
+  await upload.waitFor({ state: "visible", timeout: timeoutMs });
+  const chooserPromise = page.waitForEvent("filechooser", { timeout: timeoutMs });
+  await upload.click({ force: true, timeout: timeoutMs });
+  const chooser = await chooserPromise;
+  await chooser.setFiles(paths, { timeout: timeoutMs });
   for (const attachment of manifest.attachments) {
     await page.getByText(attachment.sourceName, { exact: true }).first()
       .waitFor({ state: "attached", timeout: timeoutMs });

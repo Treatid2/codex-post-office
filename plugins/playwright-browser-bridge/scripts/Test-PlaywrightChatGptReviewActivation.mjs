@@ -19,11 +19,13 @@ await fs.mkdir(moduleRoot, { recursive: true });
 await fs.writeFile(path.join(moduleRoot, "package.json"), JSON.stringify({ type: "module" }));
 await fs.writeFile(path.join(moduleRoot, "index.mjs"), `
 let markerVisible = process.env.PWB_TEST_REPLAY === "1";
+let menuVisible = false;
 const clickStalls = process.env.PWB_TEST_CLICK_STALL === "1";
 const sourceMessageId = "12345678-1234-4234-8234-123456789abc";
 class Locator {
   constructor(kind) { this.kind = kind; }
   filter() { return this; }
+  or() { return this; }
   first() { return this; }
   nth() { return this; }
   locator(selector) {
@@ -38,21 +40,33 @@ class Locator {
     return 1;
   }
   async getAttribute(name) { return name === "data-message-id" ? sourceMessageId : null; }
-  async waitFor() {}
+  async waitFor() {
+    if (this.kind === "upload" && !menuVisible) throw new Error("upload menu is not visible");
+  }
   async fill() {}
-  async setInputFiles() {}
+  async setInputFiles() {
+    if (this.kind === "file") throw new Error("page-wide file input must not be used");
+  }
   async evaluate() { return true; }
   async press(key) { if (key === "Enter") markerVisible = true; }
-  async isVisible() { return this.kind !== "none"; }
+  async isVisible() {
+    if (this.kind === "upload") return menuVisible;
+    return this.kind !== "none";
+  }
   async isEditable() { return this.kind === "composer"; }
   async isEnabled() { return true; }
-  async click() { if (!clickStalls) markerVisible = true; }
+  async click() {
+    if (this.kind === "add") menuVisible = true;
+    if (this.kind === "send" && !clickStalls) markerVisible = true;
+  }
 }
 class Page {
   url() { return "https://chatgpt.com/c/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"; }
   async goto() {}
   locator(selector) {
     if (selector === "[data-message-id]") return new Locator("messages");
+    if (selector === 'input[type="file"]') return new Locator("file");
+    if (selector.includes("composer-plus-btn") || selector.includes("Add files and more") || selector.includes("Attach files")) return new Locator("add");
     if (selector.includes("send-button")) return new Locator("send");
     return new Locator("composer");
   }
@@ -60,10 +74,15 @@ class Page {
     if (role === "textbox") return new Locator("composer");
     if (role === "button" && options.name === "Log in") return new Locator("login");
     if (role === "button") return new Locator("send");
+    if (role === "menuitem") return new Locator("upload");
     return new Locator("none");
   }
   getByText() { return new Locator("attachment"); }
   async waitForTimeout() {}
+  async waitForEvent(name) {
+    if (name !== "filechooser") throw new Error("Unexpected event: " + name);
+    return { async setFiles() {} };
+  }
 }
 const page = new Page();
 export const chromium = {
