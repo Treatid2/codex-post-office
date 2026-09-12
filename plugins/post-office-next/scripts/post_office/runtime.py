@@ -1773,6 +1773,304 @@ def claim_next_review(
         con.close()
 
 
+def issue_automatic_review_activation_manifest(
+    database_path: Path,
+    credential_path: Path,
+    plugin_root: Path,
+    *,
+    review_id: str,
+    activation_dispatch_id: str,
+    idempotency_key: str,
+) -> dict[str, Any]:
+    """Issue one immutable package-bearing activation for an active browser reviewer."""
+    activation_dispatch_id = activation_dispatch_id.strip()
+    idempotency_key = idempotency_key.strip()
+    if (
+        not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}", activation_dispatch_id)
+        or not idempotency_key
+        or len(idempotency_key) > 240
+    ):
+        raise PostOfficeError("PON_INPUT_INVALID", "Review activation identity is invalid", {})
+    con = _open_writer(database_path, plugin_root)
+    created_directory: Path | None = None
+    try:
+        capability, actor = _courier(con, credential_path)
+        review = con.execute(
+            "SELECT * FROM automatic_reviews WHERE review_id=?", (review_id,)
+        ).fetchone()
+        if not review or review["state"] != "ACTIVE":
+            raise PostOfficeError(
+                "PON_CONCURRENCY_CONFLICT", "Automatic review is not active", {"reviewId": review_id}
+            )
+        message = con.execute(
+            "SELECT * FROM semantic_messages WHERE message_id=?", (review["semantic_message_id"],)
+        ).fetchone()
+        bundle = con.execute(
+            "SELECT * FROM message_bundles WHERE message_id=?", (review["semantic_message_id"],)
+        ).fetchone()
+        mailbox = con.execute(
+            """SELECT * FROM mailboxes
+               WHERE mailbox_id=? AND generation=? AND endpoint_id=? AND status='ACTIVE'""",
+            (
+                message["recipient_mailbox_id"] if message else None,
+                message["recipient_generation"] if message else None,
+                review["reviewer_endpoint_id"],
+            ),
+        ).fetchone()
+        retained_copy = con.execute(
+            """SELECT * FROM storage_copies
+               WHERE content_sha256=? AND location_kind='LOCAL_CAS'
+               ORDER BY verified_at DESC LIMIT 1""",
+            (review["package_sha256"],),
+        ).fetchone()
+        if not message or not bundle or not mailbox or not retained_copy:
+            raise PostOfficeError(
+                "PON_CUSTODY_NOT_VERIFIED",
+                "Review activation lacks its active mailbox or verified package custody",
+                {},
+            )
+        if (
+            bundle["sha256"] != review["package_sha256"]
+            or int(bundle["size_bytes"]) < 1
+            or Path(bundle["canonical_filename"]).name != bundle["canonical_filename"]
+        ):
+            raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Review package identity differs", {})
+        request_fingerprint = sha256_json({
+            "reviewId": review_id,
+            "activationDispatchId": activation_dispatch_id,
+            "reviewerThreadId": review["reviewer_thread_id"],
+            "mailboxId": mailbox["mailbox_id"],
+            "mailboxGeneration": int(mailbox["generation"]),
+            "packageSha256": review["package_sha256"],
+        })
+        existing = con.execute(
+            "SELECT * FROM automatic_review_activations WHERE idempotency_key=?",
+            (idempotency_key,),
+        ).fetchone()
+        if existing:
+            if existing["request_fingerprint"] != request_fingerprint:
+                raise PostOfficeError(
+                    "PON_IDEMPOTENCY_CONFLICT", "Review activation replay differs", {}
+                )
+            manifest_path = Path(existing["manifest_path"])
+            if (
+                not manifest_path.is_file()
+                or sha256_bytes(manifest_path.read_bytes()) != existing["manifest_sha256"]
+            ):
+                raise PostOfficeError(
+                    "PON_CUSTODY_NOT_VERIFIED", "Retained review activation manifest differs", {}
+                )
+            con.rollback()
+            return {
+                "ok": True,
+                "replayed": True,
+                "activationId": existing["activation_id"],
+                "reviewId": review_id,
+                "activationDispatchId": existing["activation_dispatch_id"],
+                "state": existing["state"],
+                "manifestPath": str(manifest_path),
+                "manifestSha256": existing["manifest_sha256"],
+            }
+        conflict = con.execute(
+            "SELECT activation_id FROM automatic_review_activations WHERE review_id=? OR activation_dispatch_id=?",
+            (review_id, activation_dispatch_id),
+        ).fetchone()
+        if conflict:
+            raise PostOfficeError(
+                "PON_IDEMPOTENCY_CONFLICT",
+                "Review already has a different activation identity",
+                {"activationId": conflict["activation_id"]},
+            )
+        source_path = Path(retained_copy["local_location"])
+        if not source_path.is_absolute():
+            source_path = database_path.resolve().parent / source_path
+        if (
+            not source_path.is_file()
+            or source_path.stat().st_size != int(bundle["size_bytes"])
+            or sha256_bytes(source_path.read_bytes()) != bundle["sha256"]
+        ):
+            raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Retained review package differs", {})
+        result_name = f"{review_id}_RESULT.md"
+        subject = review["subject"] or message["requested_action"]
+        prompt = (
+            f"AUTOMATIC CSX CODE REVIEW\n\nReview ID: {review_id}\n"
+            f"Activation Dispatch ID: {activation_dispatch_id}\nSubject: {subject}\n"
+            f"Package: attached as {bundle['canonical_filename']}\n"
+            f"Package SHA-256: {review['package_sha256']}\n"
+            f"Exact result filename: {result_name}\n\n"
+            "Process only this request under the automatic-review guidance and the attached package's "
+            "REVIEW_CONTRACT.md. This is a read-only request-review-return transaction. Do not modify "
+            "code, create a patch, contact another task, open a handoff, or infer implementation authority. "
+            f"Write the complete review as exact UTF-8 Markdown named {result_name}. The file must begin "
+            f"exactly with REVIEW RESULT and include Review ID: {review_id}, Activation Dispatch ID: "
+            f"{activation_dispatch_id}, and exactly one supported Verdict line. Attach that exact Markdown "
+            "file to the final response and report its byte count and SHA-256. Do not upload the result to "
+            "Drive, create a ZIP, or create a response package. Keep the final response compact; the attached "
+            "Markdown file is the authoritative complete review."
+        )
+        now = _timestamp()
+        activation_id = "PON-REVIEW-ACTIVATION-" + uuid.uuid4().hex
+        created_directory = database_path.resolve().parent / "playwright-activations" / activation_id
+        attachment_path = created_directory / "attachments" / bundle["canonical_filename"]
+        attachment_path.parent.mkdir(parents=True, exist_ok=False)
+        shutil.copyfile(source_path, attachment_path)
+        if (
+            attachment_path.stat().st_size != int(bundle["size_bytes"])
+            or sha256_bytes(attachment_path.read_bytes()) != bundle["sha256"]
+        ):
+            raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Staged review package differs", {})
+        manifest = {
+            "schemaVersion": 1,
+            "kind": "AUTOMATIC_REVIEW_ACTIVATION",
+            "activationId": activation_id,
+            "reviewId": review_id,
+            "dispatchId": activation_dispatch_id,
+            "threadId": review["reviewer_thread_id"],
+            "mailboxId": mailbox["mailbox_id"],
+            "mailboxGeneration": int(mailbox["generation"]),
+            "prompt": prompt,
+            "promptSha256": sha256_bytes(prompt.encode("utf-8")),
+            "attachments": [{
+                "path": str(attachment_path),
+                "sourceName": bundle["canonical_filename"],
+                "sizeBytes": int(bundle["size_bytes"]),
+                "sha256": bundle["sha256"],
+            }],
+            "issuedAt": now,
+        }
+        manifest_path = created_directory / "activation-manifest.json"
+        manifest_bytes = canonical_json_bytes(manifest) + b"\n"
+        manifest_path.write_bytes(manifest_bytes)
+        manifest_sha256 = sha256_bytes(manifest_bytes)
+        con.execute(
+            """INSERT INTO automatic_review_activations(
+               activation_id,review_id,activation_dispatch_id,reviewer_thread_id,mailbox_id,
+               mailbox_generation,prompt_sha256,manifest_path,manifest_sha256,state,idempotency_key,
+               request_fingerprint,source_message_id,receipt_reference,created_at,updated_at)
+               VALUES(?,?,?,?,?,?,?,?,?,'PACKET_ISSUED',?,?,NULL,NULL,?,?)""",
+            (
+                activation_id, review_id, activation_dispatch_id, review["reviewer_thread_id"],
+                mailbox["mailbox_id"], int(mailbox["generation"]), manifest["promptSha256"],
+                str(manifest_path), manifest_sha256, idempotency_key, request_fingerprint, now, now,
+            ),
+        )
+        aggregate_root = _aggregate_root("AutomaticReview", review_id, _review_state(review))
+        version = _aggregate_position(
+            con, aggregate_type="AutomaticReview", aggregate_id=review_id, current_root=aggregate_root
+        )
+        request = _runtime_request(
+            actor=actor, capability=capability, message=message,
+            operation="runtime.review.activation.issue", aggregate_type="AutomaticReview",
+            aggregate_id=review_id, parameters={"activationDispatchId": activation_dispatch_id},
+        )
+        event = append_hub_event(
+            con, request=request, capability_id=capability["capability_id"],
+            aggregate_version=version + 1, before_root=aggregate_root, after_root=aggregate_root,
+            event_result={"state": "PACKET_ISSUED", "activationId": activation_id,
+                          "manifestSha256": manifest_sha256}, occurred_at=now,
+        )
+        con.commit()
+        return {
+            "ok": True, "replayed": False, "activationId": activation_id,
+            "reviewId": review_id, "activationDispatchId": activation_dispatch_id,
+            "state": "PACKET_ISSUED", "manifestPath": str(manifest_path),
+            "manifestSha256": manifest_sha256, "eventId": event["eventId"],
+        }
+    except Exception:
+        if con.in_transaction:
+            con.rollback()
+        if created_directory and created_directory.exists():
+            shutil.rmtree(created_directory)
+        raise
+    finally:
+        con.close()
+
+
+def record_automatic_review_activation_receipt(
+    database_path: Path,
+    credential_path: Path,
+    plugin_root: Path,
+    *,
+    review_id: str,
+    activation_dispatch_id: str,
+    source_message_id: str,
+    receipt_reference: str,
+) -> dict[str, Any]:
+    """Record the exact visible browser receipt for one issued review activation."""
+    if not re.fullmatch(r"[0-9a-fA-F-]{36}", source_message_id):
+        raise PostOfficeError("PON_INPUT_INVALID", "Activation source message ID must be a UUID", {})
+    con = _open_writer(database_path, plugin_root)
+    try:
+        capability, actor = _courier(con, credential_path)
+        activation = con.execute(
+            """SELECT a.*,r.semantic_message_id FROM automatic_review_activations a
+               JOIN automatic_reviews r ON r.review_id=a.review_id
+               WHERE a.review_id=? AND a.activation_dispatch_id=?""",
+            (review_id, activation_dispatch_id),
+        ).fetchone()
+        if not activation:
+            raise PostOfficeError("PON_INPUT_INVALID", "Review activation is unavailable", {})
+        expected_receipt = (
+            f"playwright-chatgpt-review-activation:{review_id}:{activation_dispatch_id}:"
+            f"{activation['reviewer_thread_id']}:{source_message_id}"
+        )
+        if receipt_reference != expected_receipt:
+            raise PostOfficeError("PON_OBSERVATION_MISMATCH", "Activation receipt identity differs", {})
+        if activation["state"] == "SENT":
+            if (
+                activation["source_message_id"] != source_message_id
+                or activation["receipt_reference"] != receipt_reference
+            ):
+                raise PostOfficeError("PON_IDEMPOTENCY_CONFLICT", "Activation receipt replay differs", {})
+            con.rollback()
+            return {
+                "ok": True, "replayed": True, "activationId": activation["activation_id"],
+                "reviewId": review_id, "state": "SENT", "sourceMessageId": source_message_id,
+            }
+        review = con.execute(
+            "SELECT * FROM automatic_reviews WHERE review_id=?", (review_id,)
+        ).fetchone()
+        message = con.execute(
+            "SELECT * FROM semantic_messages WHERE message_id=?", (activation["semantic_message_id"],)
+        ).fetchone()
+        if not review or review["state"] != "ACTIVE" or not message:
+            raise PostOfficeError("PON_CONCURRENCY_CONFLICT", "Active review is unavailable", {})
+        now = _timestamp()
+        con.execute(
+            """UPDATE automatic_review_activations
+               SET state='SENT',source_message_id=?,receipt_reference=?,updated_at=?
+               WHERE activation_id=? AND state='PACKET_ISSUED'""",
+            (source_message_id, receipt_reference, now, activation["activation_id"]),
+        )
+        aggregate_root = _aggregate_root("AutomaticReview", review_id, _review_state(review))
+        version = _aggregate_position(
+            con, aggregate_type="AutomaticReview", aggregate_id=review_id, current_root=aggregate_root
+        )
+        request = _runtime_request(
+            actor=actor, capability=capability, message=message,
+            operation="runtime.review.activation.receipt", aggregate_type="AutomaticReview",
+            aggregate_id=review_id, parameters={"activationDispatchId": activation_dispatch_id},
+        )
+        event = append_hub_event(
+            con, request=request, capability_id=capability["capability_id"],
+            aggregate_version=version + 1, before_root=aggregate_root, after_root=aggregate_root,
+            event_result={"state": "SENT", "activationId": activation["activation_id"],
+                          "sourceMessageId": source_message_id}, occurred_at=now,
+        )
+        con.commit()
+        return {
+            "ok": True, "replayed": False, "activationId": activation["activation_id"],
+            "reviewId": review_id, "state": "SENT", "sourceMessageId": source_message_id,
+            "eventId": event["eventId"],
+        }
+    except Exception:
+        if con.in_transaction:
+            con.rollback()
+        raise
+    finally:
+        con.close()
+
+
 def return_automatic_review(
     database_path: Path, credential_path: Path, plugin_root: Path, *, review_id: str,
     result_message_id: str,
@@ -1795,12 +2093,17 @@ def return_automatic_review(
             raise PostOfficeError("PON_CONCURRENCY_CONFLICT", "Review return has no materialized wake dispatch", {})
         now = _timestamp()
         before = _review_state(review)
+        before_root = _aggregate_root("AutomaticReview", review_id, before)
+        position = _aggregate_position(
+            con, aggregate_type="AutomaticReview", aggregate_id=review_id,
+            current_root=before_root,
+        )
         con.execute("UPDATE automatic_reviews SET state='RETURNED',returned_at=?,result_message_id=?,wake_dispatch_id=? WHERE review_id=?", (now, result_message_id, dispatch["dispatch_id"], review_id))
         updated_review = con.execute("SELECT * FROM automatic_reviews WHERE review_id=?", (review_id,)).fetchone()
         after = _review_state(updated_review)
         request_message = con.execute("SELECT * FROM semantic_messages WHERE message_id=?", (review["semantic_message_id"],)).fetchone()
         request = _runtime_request(actor=actor, capability=capability, message=request_message, operation="runtime.review.return", aggregate_type="AutomaticReview", aggregate_id=review_id, parameters={"resultMessageId": result_message_id, "wakeDispatchId": dispatch["dispatch_id"]})
-        event = append_hub_event(con, request=request, capability_id=capability["capability_id"], aggregate_version=3, before_root=_aggregate_root("AutomaticReview", review_id, before), after_root=_aggregate_root("AutomaticReview", review_id, after), event_result={"state": "RETURNED", "wakeDispatchId": dispatch["dispatch_id"]}, occurred_at=now)
+        event = append_hub_event(con, request=request, capability_id=capability["capability_id"], aggregate_version=position + 1, before_root=before_root, after_root=_aggregate_root("AutomaticReview", review_id, after), event_result={"state": "RETURNED", "wakeDispatchId": dispatch["dispatch_id"]}, occurred_at=now)
         con.commit()
         return {"ok": True, "reviewId": review_id, "state": "RETURNED", "resultMessageId": result_message_id, "wakeDispatchId": dispatch["dispatch_id"], "eventId": event["eventId"], "heartbeatRequired": False}
     except Exception:
@@ -1948,6 +2251,11 @@ def ingest_automatic_review_result(
         )
         con.execute("UPDATE semantic_messages SET registered_event_id=? WHERE message_id=?", (message_event["eventId"], result_message_id))
         before_review = _review_state(review)
+        before_review_root = _aggregate_root("AutomaticReview", review_id, before_review)
+        review_position = _aggregate_position(
+            con, aggregate_type="AutomaticReview", aggregate_id=review_id,
+            current_root=before_review_root,
+        )
         con.execute(
             "UPDATE automatic_reviews SET state='RETURNED',returned_at=?,result_message_id=?,wake_dispatch_id=? WHERE review_id=?",
             (now, result_message_id, dispatch_id, review_id),
@@ -1959,8 +2267,8 @@ def ingest_automatic_review_result(
             parameters={"resultMessageId": result_message_id, "wakeDispatchId": dispatch_id},
         )
         review_event = append_hub_event(
-            con, request=review_request, capability_id=capability["capability_id"], aggregate_version=3,
-            before_root=_aggregate_root("AutomaticReview", review_id, before_review),
+            con, request=review_request, capability_id=capability["capability_id"], aggregate_version=review_position + 1,
+            before_root=before_review_root,
             after_root=_aggregate_root("AutomaticReview", review_id, _review_state(after_review_row)),
             event_result={"state": "RETURNED", "wakeDispatchId": dispatch_id}, occurred_at=now,
         )
@@ -1987,14 +2295,27 @@ def withdraw_automatic_review(
         review = con.execute("SELECT * FROM automatic_reviews WHERE review_id=?", (review_id,)).fetchone()
         if not review or review["state"] not in {"QUEUED", "ACTIVE"}:
             raise PostOfficeError("PON_CONCURRENCY_CONFLICT", "Only a queued or active review may be withdrawn", {})
+        if review["state"] == "ACTIVE" and con.execute(
+            "SELECT 1 FROM automatic_review_activations WHERE review_id=?", (review_id,)
+        ).fetchone():
+            raise PostOfficeError(
+                "PON_CONCURRENCY_CONFLICT",
+                "A package-bearing review activation has started and cannot be withdrawn",
+                {},
+            )
         message = con.execute("SELECT * FROM semantic_messages WHERE message_id=?", (review["semantic_message_id"],)).fetchone()
         now = _timestamp()
         before = _review_state(review)
+        before_root = _aggregate_root("AutomaticReview", review_id, before)
+        position = _aggregate_position(
+            con, aggregate_type="AutomaticReview", aggregate_id=review_id,
+            current_root=before_root,
+        )
         con.execute("UPDATE automatic_reviews SET state='WITHDRAWN' WHERE review_id=?", (review_id,))
         updated_review = con.execute("SELECT * FROM automatic_reviews WHERE review_id=?", (review_id,)).fetchone()
         after = _review_state(updated_review)
         request = _runtime_request(actor=actor, capability=capability, message=message, operation="runtime.review.withdraw", aggregate_type="AutomaticReview", aggregate_id=review_id, parameters={"reason": reason})
-        event = append_hub_event(con, request=request, capability_id=capability["capability_id"], aggregate_version=2 if review["state"] == "QUEUED" else 3, before_root=_aggregate_root("AutomaticReview", review_id, before), after_root=_aggregate_root("AutomaticReview", review_id, after), event_result={"state": "WITHDRAWN", "reason": reason}, occurred_at=now)
+        event = append_hub_event(con, request=request, capability_id=capability["capability_id"], aggregate_version=position + 1, before_root=before_root, after_root=_aggregate_root("AutomaticReview", review_id, after), event_result={"state": "WITHDRAWN", "reason": reason}, occurred_at=now)
         con.commit()
         return {"ok": True, "reviewId": review_id, "state": "WITHDRAWN", "eventId": event["eventId"]}
     except Exception:

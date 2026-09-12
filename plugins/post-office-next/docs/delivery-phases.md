@@ -37,9 +37,10 @@ These labels describe engineering gates, not priority severities and not product
   through local CAS and the normal receipted transport queue to another browser without Drive or a
   legacy shim. This is implemented; it does not make browser metadata authoritative.
 - **P2.3 — automatic-review activation increment.** Replace the unreliable native reviewer-task
-  dispatch dependency with an immutable, zero-attachment Playwright activation manifest bound to
+  dispatch dependency with an immutable, package-bearing Playwright activation manifest bound to
   the Review ID, Activation Dispatch ID, reviewer conversation, browser mailbox generation, exact
-  prompt, and prompt SHA-256. Record `SENT` only after the exact visible marker and resulting user
+  prompt, prompt SHA-256, and the locally retained package's name, size, and SHA-256. Upload the
+  verified package in the same browser turn so Drive is not needed. Record `SENT` only after the exact visible marker and resulting user
   turn UUID are observed. Failed attempts remain durably `PENDING_SEND` and idempotently retryable.
   This increment does not broaden review authority or resubmit a review transaction.
 - **P2.4 — courier reconciliation and recovery increment.** Reconcile retained ledger identity

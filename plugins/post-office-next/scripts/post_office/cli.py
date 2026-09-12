@@ -33,9 +33,11 @@ from .runtime import (
     ingest_recovered_browser_return,
     ingest_automatic_review_result,
     issue_automatic_review_result_collection_manifest,
+    issue_automatic_review_activation_manifest,
     issue_browser_return_collection_manifest,
     issue_transport_delivery_manifest,
     reconcile_transport,
+    record_automatic_review_activation_receipt,
     record_recovered_transport_receipt,
     retire_review_owned_transport_dispatches,
     reconcile_continuations,
@@ -144,6 +146,7 @@ def _parser() -> argparse.ArgumentParser:
             "reconcile", "claim", "complete", "record-recovered", "ingest-browser-return",
             "issue-browser-return-collection", "ingest-collected-browser-return",
             "issue-review-result-collection",
+            "issue-review-activation", "record-review-activation-receipt",
             "issue-delivery-manifest",
             "retire-review-transport",
         ],
@@ -175,6 +178,8 @@ def _parser() -> argparse.ArgumentParser:
     runtime.add_argument("--collection-receipt")
     runtime.add_argument("--review-id")
     runtime.add_argument("--activation-dispatch-id")
+    runtime.add_argument("--idempotency-key")
+    runtime.add_argument("--receipt-reference")
     runtime.add_argument("--verdict")
     reviews = sub.add_parser("reviews")
     reviews.add_argument("action", choices=["ensure", "claim", "ingest-result", "return", "status", "complete", "withdraw"])
@@ -437,6 +442,29 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
                 expected_sha256=args.expected_sha256,
                 expected_size_bytes=args.expected_size_bytes,
                 observed_at=args.observed_at,
+            )
+        if args.action == "issue-review-activation":
+            if not all((args.review_id, args.activation_dispatch_id, args.idempotency_key)):
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "runtime issue-review-activation requires review ID, activation dispatch ID and idempotency key",
+                )
+            return issue_automatic_review_activation_manifest(
+                Path(args.path), Path(args.credential), plugin_root,
+                review_id=args.review_id, activation_dispatch_id=args.activation_dispatch_id,
+                idempotency_key=args.idempotency_key,
+            )
+        if args.action == "record-review-activation-receipt":
+            if not all((args.review_id, args.activation_dispatch_id, args.source_message_id,
+                        args.receipt_reference)):
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "runtime record-review-activation-receipt requires review ID, activation dispatch ID, source message ID and receipt reference",
+                )
+            return record_automatic_review_activation_receipt(
+                Path(args.path), Path(args.credential), plugin_root,
+                review_id=args.review_id, activation_dispatch_id=args.activation_dispatch_id,
+                source_message_id=args.source_message_id, receipt_reference=args.receipt_reference,
             )
         if args.action == "ingest-collected-browser-return":
             if not all((args.collection_manifest, args.result_path, args.collection_receipt)):

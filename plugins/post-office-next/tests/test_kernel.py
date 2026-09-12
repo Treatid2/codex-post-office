@@ -44,11 +44,13 @@ from post_office.runtime import (  # noqa: E402
     ingest_collected_browser_return,
     ingest_recovered_browser_return,
     issue_automatic_review_result_collection_manifest,
+    issue_automatic_review_activation_manifest,
     issue_browser_return_collection_manifest,
     issue_transport_delivery_manifest,
     reconcile_continuations,
     reconcile_transport,
     record_recovered_transport_receipt,
+    record_automatic_review_activation_receipt,
     retire_review_owned_transport_dispatches,
     retire_continuation,
     withdraw_automatic_review,
@@ -426,7 +428,7 @@ class OperationalKernelTests(unittest.TestCase):
             self.assertTrue(first["ok"])
             self.assertEqual(first["beforeRoot"], first["afterRoot"])
             self.assertEqual(first["status"]["mode"], "ISOLATED")
-            self.assertEqual(first["status"]["databaseUserVersion"], 9)
+            self.assertEqual(first["status"]["databaseUserVersion"], 10)
             self.assertEqual(first["status"]["implementedOperations"], sorted(IMPLEMENTED_OPERATIONS))
             con = sqlite3.connect(database)
             try:
@@ -1320,7 +1322,11 @@ class OperationalKernelTests(unittest.TestCase):
                 {"cycleId": "PON-CYCLE-SEMANTIC", "projectId": "PON-PROJECT-001", "scope": "Semantic test"},
             )), credential, PLUGIN_ROOT)
 
-            bundle_hash = "d" * 64
+            bundle_bytes = b"0123456789"
+            bundle_hash = hashlib.sha256(bundle_bytes).hexdigest()
+            bundle_path = root / "sha256" / "dd" / "object"
+            bundle_path.parent.mkdir(parents=True, exist_ok=True)
+            bundle_path.write_bytes(bundle_bytes)
             con = sqlite3.connect(database)
             try:
                 con.execute(
@@ -1437,9 +1443,52 @@ class OperationalKernelTests(unittest.TestCase):
             self.assertTrue(ensured["created"])
             claimed_review = claim_next_review(database, courier_credential, PLUGIN_ROOT)
             self.assertEqual(claimed_review["reviewId"], "PON-REVIEW-001")
+            activation_dispatch_id = "PON-ARD-REVIEW-001"
+            activation = issue_automatic_review_activation_manifest(
+                database, courier_credential, PLUGIN_ROOT,
+                review_id="PON-REVIEW-001", activation_dispatch_id=activation_dispatch_id,
+                idempotency_key="review-001-activation",
+            )
+            self.assertFalse(activation["replayed"])
+            activation_manifest = json.loads(
+                Path(activation["manifestPath"]).read_text(encoding="utf-8")
+            )
+            self.assertEqual(activation_manifest["kind"], "AUTOMATIC_REVIEW_ACTIVATION")
+            self.assertEqual(activation_manifest["dispatchId"], activation_dispatch_id)
+            self.assertEqual(len(activation_manifest["attachments"]), 1)
+            activation_attachment = activation_manifest["attachments"][0]
+            self.assertEqual(activation_attachment["sha256"], bundle_hash)
+            self.assertEqual(
+                hashlib.sha256(Path(activation_attachment["path"]).read_bytes()).hexdigest(),
+                bundle_hash,
+            )
+            self.assertTrue(issue_automatic_review_activation_manifest(
+                database, courier_credential, PLUGIN_ROOT,
+                review_id="PON-REVIEW-001", activation_dispatch_id=activation_dispatch_id,
+                idempotency_key="review-001-activation",
+            )["replayed"])
+            activation_source_message_id = "00000000-0000-0000-0000-000000000003"
+            activation_receipt_reference = (
+                "playwright-chatgpt-review-activation:PON-REVIEW-001:"
+                f"{activation_dispatch_id}:00000000-0000-0000-0000-000000000001:"
+                f"{activation_source_message_id}"
+            )
+            activation_receipt = record_automatic_review_activation_receipt(
+                database, courier_credential, PLUGIN_ROOT,
+                review_id="PON-REVIEW-001", activation_dispatch_id=activation_dispatch_id,
+                source_message_id=activation_source_message_id,
+                receipt_reference=activation_receipt_reference,
+            )
+            self.assertEqual(activation_receipt["state"], "SENT")
+            self.assertTrue(record_automatic_review_activation_receipt(
+                database, courier_credential, PLUGIN_ROOT,
+                review_id="PON-REVIEW-001", activation_dispatch_id=activation_dispatch_id,
+                source_message_id=activation_source_message_id,
+                receipt_reference=activation_receipt_reference,
+            )["replayed"])
             review_collection = issue_automatic_review_result_collection_manifest(
                 database, courier_credential, PLUGIN_ROOT,
-                review_id="PON-REVIEW-001", activation_dispatch_id="PON-ARD-REVIEW-001",
+                review_id="PON-REVIEW-001", activation_dispatch_id=activation_dispatch_id,
                 verdict="PASS", source_thread_id="00000000-0000-0000-0000-000000000001",
                 source_turn_id="00000000-0000-0000-0000-000000000002",
                 attachment_reference=':chatgpt-content-reference{index="0"}',
@@ -1451,11 +1500,11 @@ class OperationalKernelTests(unittest.TestCase):
                 json.loads(Path(review_collection["manifestPath"]).read_text(encoding="utf-8"))["scopeKind"],
                 "AUTOMATIC_REVIEW",
             )
-            withdrawn = withdraw_automatic_review(
-                database, courier_credential, PLUGIN_ROOT, review_id="PON-REVIEW-001",
-                reason="Test cancellation before review work",
-            )
-            self.assertEqual(withdrawn["state"], "WITHDRAWN")
+            with self.assertRaises(PostOfficeError):
+                withdraw_automatic_review(
+                    database, courier_credential, PLUGIN_ROOT, review_id="PON-REVIEW-001",
+                    reason="Too late after browser activation",
+                )
 
             # Simulate a pre-fix review custody attempt and the unsent ordinary dispatch that an
             # old reconciliation pass could materialize for it.

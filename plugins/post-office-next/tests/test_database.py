@@ -147,7 +147,7 @@ class DatabaseFoundationTests(unittest.TestCase):
             self.assertTrue(first["created"])
             self.assertEqual(first["journalMode"], "WAL")
             self.assertEqual(first["database"]["applicationId"], APPLICATION_ID)
-            self.assertEqual(first["database"]["userVersion"], 9)
+            self.assertEqual(first["database"]["userVersion"], 10)
             self.assertEqual(first["database"]["quickCheck"], "ok")
             self.assertEqual(first["database"]["foreignKeyErrors"], [])
             self.assertIn("hub_events", first["database"]["tables"])
@@ -156,7 +156,7 @@ class DatabaseFoundationTests(unittest.TestCase):
             second = initialize_database(PLUGIN_ROOT, path)
             self.assertFalse(second["created"])
             self.assertTrue(all(item["alreadyApplied"] for item in second["migrations"]))
-            self.assertEqual(inspect_database(path)["database"]["userVersion"], 9)
+            self.assertEqual(inspect_database(path)["database"]["userVersion"], 10)
 
     def test_drive_exists_only_in_transient_browser_bridge_table(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -201,7 +201,7 @@ class DatabaseFoundationTests(unittest.TestCase):
             self.assertTrue(receipt.is_file())
             self.assertEqual(result["quickCheck"], "ok")
             self.assertEqual(result["foreignKeyErrors"], [])
-            self.assertEqual(inspect_database(backup)["database"]["userVersion"], 9)
+            self.assertEqual(inspect_database(backup)["database"]["userVersion"], 10)
             self.assertEqual(result["sourceSnapshotRoot"], result["destinationLogicalStateRoot"])
             self.assertEqual(result["sourceLogicalContentsRoot"], result["destinationLogicalContentsRoot"])
             self.assertEqual(result["sourceEventBoundary"], result["destinationEventBoundary"])
@@ -315,7 +315,7 @@ class DatabaseFoundationTests(unittest.TestCase):
             con = sqlite3.connect(extra)
             try:
                 con.execute(
-                    "INSERT INTO schema_migrations(version,name,sha256,applied_at) VALUES(10,'unknown',?,'2026-09-04T12:00:00Z')",
+                    "INSERT INTO schema_migrations(version,name,sha256,applied_at) VALUES(11,'unknown',?,'2026-09-04T12:00:00Z')",
                     ("f" * 64,),
                 )
                 con.execute("PRAGMA user_version=10")

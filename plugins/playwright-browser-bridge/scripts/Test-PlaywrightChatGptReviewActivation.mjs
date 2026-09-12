@@ -40,6 +40,7 @@ class Locator {
   async getAttribute(name) { return name === "data-message-id" ? sourceMessageId : null; }
   async waitFor() {}
   async fill() {}
+  async setInputFiles() {}
   async evaluate() { return true; }
   async press(key) { if (key === "Enter") markerVisible = true; }
   async isVisible() { return this.kind !== "none"; }
@@ -61,6 +62,7 @@ class Page {
     if (role === "button") return new Locator("send");
     return new Locator("none");
   }
+  getByText() { return new Locator("attachment"); }
   async waitForTimeout() {}
 }
 const page = new Page();
@@ -78,6 +80,10 @@ const reviewId = "CSX-REVIEW-P2-3-TEST";
 const dispatchId = "ARD-11111111-2222-4333-8444-555555555555";
 const threadId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const prompt = `AUTOMATIC CSX CODE REVIEW\n\nReview ID: ${reviewId}\nActivation Dispatch ID: ${dispatchId}\n`;
+const packagePath = path.join(testRoot, "review-package.zip");
+await fs.writeFile(packagePath, "review package");
+const packageBytes = (await fs.stat(packagePath)).size;
+const packageSha256 = crypto.createHash("sha256").update(await fs.readFile(packagePath)).digest("hex");
 const manifest = {
   schemaVersion: 1,
   kind: "AUTOMATIC_REVIEW_ACTIVATION",
@@ -89,6 +95,12 @@ const manifest = {
   mailboxGeneration: 1,
   prompt,
   promptSha256: crypto.createHash("sha256").update(prompt, "utf8").digest("hex"),
+  attachments: [{
+    path: packagePath,
+    sourceName: path.basename(packagePath),
+    sizeBytes: packageBytes,
+    sha256: packageSha256,
+  }],
   issuedAt: "2026-09-10T00:00:00Z",
 };
 const manifestPath = path.join(testRoot, "activation-manifest.json");
@@ -117,6 +129,8 @@ try {
   assert.equal(receipt.reviewId, reviewId);
   assert.equal(receipt.dispatchId, dispatchId);
   assert.equal(receipt.sourceMessageId, "12345678-1234-4234-8234-123456789abc");
+  assert.equal(receipt.attachmentCount, 1);
+  assert.equal(receipt.packageSha256, packageSha256);
   assert.equal(receipt.composerDiscovery, "accessible-textbox");
   assert.equal(receipt.sendDiscovery, "composer-form-submit");
   assert.equal(receipt.receiptReference,

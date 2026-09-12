@@ -14,7 +14,7 @@ transaction described below.
 | P2 | New transactional SQLite substrate, append-only journal, local content-addressed store, backup/restore, and deterministic migration. | Complete |
 | P2.1 | Exact import/replay/recovery rehearsal, including typed legacy preservation and byte-for-byte CAS verification. | Complete |
 | P2.2 | Manifest-bound browser result collection with exact conversation, turn, filename, size, digest, and correlation verification. | Complete |
-| P2.3 | Idempotent automatic-review activation through an immutable zero-attachment browser manifest. | Complete |
+| P2.3 | Idempotent automatic-review activation through an immutable package-bearing browser manifest. | Complete |
 | P2.4 | Bounded courier reconciliation, unloaded-task return, ambiguous-send recovery, obsolete-dispatch retirement, and event-driven wakes. | Complete |
 | P3.1 | Authenticated default-deny dispatcher, capability checks, durable idempotency, aggregate compare-and-swap, and hash-chained events. | Complete |
 | P3.2 | Exact author actions, delegated grants, endpoint lifecycle, mailbox allocation, and atomic generation rotation. | Complete |

@@ -4,6 +4,9 @@ All notable changes to this repository will be documented here.
 
 ## Unreleased
 
+- Closed the post-Drive review activation gap: vNext now issues an immutable activation manifest
+  containing exactly one locally retained, size-and-SHA-256 verified review package, uploads it in
+  the same reviewer turn, and records the exact visible source-message receipt idempotently.
 - Added `runtime issue-review-result-collection`, an immutable manifest issuer that binds an active
   review, activation dispatch, reviewer thread, result turn, exact attachment identity, and verdict
   without pretending the review request was ordinary delivered mail.

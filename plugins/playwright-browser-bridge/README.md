@@ -129,7 +129,7 @@ test hook. Localized placeholder strings are not selectors. The bridge still doe
 state: the courier records `WAITING_FOR_RECIPIENT`, `RECONCILIATION_REQUIRED`, `SUPERSEDED`, or
 `TERMINAL_FAILURE`, and retries only the original immutable manifest.
 
-Automatic-review activation uses a separate, zero-attachment contract. The trusted courier asks
+Automatic-review activation uses a separate, exactly-one-package contract. The trusted courier asks
 the review backend to issue an immutable activation manifest, then invokes:
 
 ```powershell
@@ -138,7 +138,8 @@ the review backend to issue an immutable activation manifest, then invokes:
 ```
 
 The manifest binds the review ID, activation dispatch ID, reviewer conversation UUID, mailbox
-generation, exact prompt, and prompt SHA-256. The bridge prefixes the prompt with
+generation, exact prompt and prompt SHA-256, plus the locally retained package name, size and
+SHA-256. The bridge verifies and uploads that package before it prefixes the prompt with
 `POST-OFFICE-REVIEW-ACTIVATION <review-id> <dispatch-id>`, uses the visible send control, and reads
 the resulting user-turn UUID. A retry observes the marker and returns the same evidence instead of
 sending again. Only the review backend may convert the exact

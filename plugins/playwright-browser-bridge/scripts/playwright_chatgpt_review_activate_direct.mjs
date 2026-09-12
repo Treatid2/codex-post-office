@@ -38,6 +38,17 @@ function sha256Text(value) {
   return crypto.createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+async function sha256File(filePath) {
+  const hash = crypto.createHash("sha256");
+  const handle = await fs.open(filePath, "r");
+  try {
+    for await (const chunk of handle.createReadStream()) hash.update(chunk);
+  } finally {
+    await handle.close();
+  }
+  return hash.digest("hex");
+}
+
 async function validateManifest() {
   const stat = await fs.stat(manifestPath);
   if (!stat.isFile() || stat.size < 2 || stat.size > 1_048_576) {
@@ -66,6 +77,23 @@ async function validateManifest() {
     if (!manifest.prompt.includes(requiredText)) {
       throw new Error("Review activation prompt lacks a manifest-bound identifier");
     }
+  }
+  if (!Array.isArray(manifest.attachments) || manifest.attachments.length !== 1) {
+    throw new Error("Review activation manifest must contain exactly one package attachment");
+  }
+  const attachment = manifest.attachments[0];
+  const resolved = path.resolve(String(attachment.path ?? ""));
+  if (!path.isAbsolute(attachment.path ?? "") || path.basename(resolved) !== attachment.sourceName ||
+      path.basename(attachment.sourceName ?? "") !== attachment.sourceName) {
+    throw new Error("Review activation attachment identity is invalid");
+  }
+  const item = await fs.stat(resolved);
+  if (!item.isFile() || item.size < 1 || item.size !== attachment.sizeBytes || item.size > 268_435_456) {
+    throw new Error("Review activation attachment size mismatch");
+  }
+  if (!/^[0-9a-f]{64}$/.test(attachment.sha256 ?? "") ||
+      await sha256File(resolved) !== attachment.sha256) {
+    throw new Error("Review activation attachment SHA-256 mismatch");
   }
 }
 
@@ -103,6 +131,42 @@ async function composerStillContainsMarker(composer) {
   }, marker());
 }
 
+async function setAttachment(page) {
+  const attachment = manifest.attachments[0];
+  const attachmentPath = path.resolve(attachment.path);
+  const fileInput = page.locator('input[type="file"]').first();
+  const setNativeFileInput = async () => {
+    if (await fileInput.count() === 0) return false;
+    await fileInput.setInputFiles([attachmentPath], { timeout: timeoutMs });
+    return true;
+  };
+  const add = page.locator([
+    'button[data-testid="composer-plus-btn"]',
+    'button[aria-label="Add files and more"]',
+    'button[aria-label="Attach files"]',
+  ].join(", ")).first();
+  await add.waitFor({ state: "attached", timeout: timeoutMs });
+  let attached = await setNativeFileInput();
+  if (!attached) {
+    await add.click({ force: true, timeout: timeoutMs });
+    await page.waitForTimeout(250);
+    attached = await setNativeFileInput();
+  }
+  if (!attached) {
+    const upload = page.getByRole("menuitem")
+      .filter({ hasText: /^(Upload from computer|Upload files|Add photos & files)$/ })
+      .or(page.getByText(/^(Upload from computer|Upload files|Add photos & files)$/))
+      .first();
+    await upload.waitFor({ state: "attached", timeout: timeoutMs });
+    const chooserPromise = page.waitForEvent("filechooser", { timeout: timeoutMs });
+    await upload.click({ force: true, timeout: timeoutMs });
+    const chooser = await chooserPromise;
+    await chooser.setFiles([attachmentPath], { timeout: timeoutMs });
+  }
+  await page.getByText(attachment.sourceName, { exact: true }).first()
+    .waitFor({ state: "attached", timeout: timeoutMs });
+}
+
 try {
   await validateManifest();
   if (!/^ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/[A-Za-z0-9-]+$/.test(cdpEndpoint)) {
@@ -133,6 +197,7 @@ try {
   const replayed = Boolean(sourceMessageId);
   let sendStrategy = null;
   if (!sourceMessageId) {
+    await setAttachment(page);
     await composer.fill(`${marker()}\n\n${manifest.prompt}`, { timeout: timeoutMs });
     const sendDiscovery = await discoverSendAction(page, composer, timeoutMs);
     sendStrategy = sendDiscovery.strategy;
@@ -162,6 +227,8 @@ try {
     sourceMessageId,
     marker: marker(),
     promptSha256: manifest.promptSha256,
+    attachmentCount: manifest.attachments.length,
+    packageSha256: manifest.attachments[0].sha256,
     receiptReference: `playwright-chatgpt-review-activation:${manifest.reviewId}:${manifest.dispatchId}:${manifest.threadId}:${sourceMessageId}`,
     replayed,
     composerDiscovery: composerDiscovery.strategy,

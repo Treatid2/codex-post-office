@@ -59,9 +59,9 @@ text as a selector. If the outcome is ambiguous, have the Post Office caller rec
 `WAITING_FOR_RECIPIENT`; an obsolete unreceipted dispatch must be durably superseded before a new
 manifest is issued.
 
-Use `deliver-review-activation` only with an immutable `activation-manifest.json` issued by the
-automatic-review backend. This is deliberately distinct from ordinary mail: it contains no
-attachments and binds the exact review, activation dispatch, reviewer conversation, mailbox
+Use `deliver-review-activation` only with an immutable, exactly-one-package
+`activation-manifest.json` issued by the automatic-review backend. This is deliberately distinct
+from ordinary mail: it binds the exact review, activation dispatch, reviewer conversation, mailbox
 generation, prompt, and prompt hash. Require the exact browser receipt and user-turn UUID, then
 record both atomically through the review backend. On failure, record the bounded retryable failure;
 do not mark the activation sent, invent a native connector receipt, or resubmit the review.
