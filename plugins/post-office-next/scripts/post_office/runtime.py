@@ -221,7 +221,15 @@ def reconcile_transport(
         created: list[str] = []
         recovered: list[str] = []
         attention_ids: list[str] = []
-        for attempt in con.execute("SELECT * FROM transport_attempts WHERE state='PENDING' ORDER BY created_at,transport_attempt_id"):
+        for attempt in con.execute(
+            """SELECT t.* FROM transport_attempts t
+               WHERE t.state='PENDING'
+                 AND NOT EXISTS (
+                     SELECT 1 FROM automatic_reviews r
+                     WHERE r.semantic_message_id=t.message_id
+                 )
+               ORDER BY t.created_at,t.transport_attempt_id"""
+        ):
             if con.execute("SELECT 1 FROM transport_dispatches WHERE transport_attempt_id=?", (attempt["transport_attempt_id"],)).fetchone():
                 continue
             message = con.execute("SELECT * FROM semantic_messages WHERE message_id=?", (attempt["message_id"],)).fetchone()
@@ -305,6 +313,132 @@ def reconcile_transport(
         con.commit()
         return {"ok": True, "createdDispatchIds": created, "recoveredDispatchIds": recovered,
                 "attentionIds": attention_ids, "stateRoot": _operational_state(con)["operationalStateRoot"]}
+    except Exception:
+        if con.in_transaction:
+            con.rollback()
+        raise
+    finally:
+        con.close()
+
+
+def retire_review_owned_transport_dispatches(
+    database_path: Path,
+    credential_path: Path,
+    plugin_root: Path,
+) -> dict[str, Any]:
+    """Retire ordinary dispatches accidentally materialized for review activation.
+
+    Automatic-review request packages remain in Post Office custody, but their browser delivery is
+    owned by the review activation path. This repair is deliberately limited to unleased READY
+    dispatches without observed receipts; ambiguous or externally visible work is never rewritten.
+    """
+    con = _open_writer(database_path, plugin_root)
+    try:
+        capability, actor = _courier(con, credential_path)
+        now = _timestamp()
+        candidates = list(con.execute(
+            """SELECT d.dispatch_id,d.transport_attempt_id,t.message_id
+               FROM transport_dispatches d
+               JOIN transport_attempts t ON t.transport_attempt_id=d.transport_attempt_id
+               JOIN automatic_reviews r ON r.semantic_message_id=t.message_id
+               WHERE d.state='READY'
+                 AND t.source='AUTOMATIC_REVIEW_COMPANION'
+                 AND d.lease_owner_actor_id IS NULL
+                 AND d.lease_token_sha256 IS NULL
+                 AND d.lease_expires_at IS NULL
+                 AND d.observed_receipt_id IS NULL
+               ORDER BY d.created_at,d.dispatch_id"""
+        ))
+        retired: list[str] = []
+        event_ids: list[str] = []
+        receipt_ids: list[str] = []
+        for candidate in candidates:
+            attempt = con.execute(
+                "SELECT * FROM transport_attempts WHERE transport_attempt_id=?",
+                (candidate["transport_attempt_id"],),
+            ).fetchone()
+            dispatch = con.execute(
+                "SELECT * FROM transport_dispatches WHERE dispatch_id=?",
+                (candidate["dispatch_id"],),
+            ).fetchone()
+            message = con.execute(
+                "SELECT * FROM semantic_messages WHERE message_id=?",
+                (candidate["message_id"],),
+            ).fetchone()
+            before_root = _aggregate_root(
+                "TransportAttempt",
+                attempt["transport_attempt_id"],
+                _transport_state(attempt, dispatch),
+            )
+            version = _aggregate_position(
+                con,
+                aggregate_type="TransportAttempt",
+                aggregate_id=attempt["transport_attempt_id"],
+                current_root=before_root,
+            )
+            con.execute(
+                """UPDATE transport_dispatches
+                   SET state='CANCELLED',last_error_code='PON_REVIEW_ACTIVATION_OWNS_TRANSPORT',
+                       updated_at=?
+                   WHERE dispatch_id=? AND state='READY'""",
+                (now, dispatch["dispatch_id"]),
+            )
+            con.execute(
+                """UPDATE transport_attempts SET state='STORED',updated_at=?
+                   WHERE transport_attempt_id=? AND state='PENDING'""",
+                (now, attempt["transport_attempt_id"]),
+            )
+            updated_attempt = con.execute(
+                "SELECT * FROM transport_attempts WHERE transport_attempt_id=?",
+                (attempt["transport_attempt_id"],),
+            ).fetchone()
+            updated_dispatch = con.execute(
+                "SELECT * FROM transport_dispatches WHERE dispatch_id=?",
+                (dispatch["dispatch_id"],),
+            ).fetchone()
+            after_root = _aggregate_root(
+                "TransportAttempt",
+                attempt["transport_attempt_id"],
+                _transport_state(updated_attempt, updated_dispatch),
+            )
+            evidence = {
+                "outcome": "RETIRED_TO_REVIEW_ACTIVATION",
+                "reasonCode": "PON_REVIEW_ACTIVATION_OWNS_TRANSPORT",
+                "semanticMessageId": message["message_id"],
+            }
+            request = _runtime_request(
+                actor=actor,
+                capability=capability,
+                message=message,
+                operation="runtime.reviewTransport.retire",
+                aggregate_type="TransportAttempt",
+                aggregate_id=attempt["transport_attempt_id"],
+                parameters={"dispatchId": dispatch["dispatch_id"], **evidence},
+            )
+            event = append_hub_event(
+                con,
+                request=request,
+                capability_id=capability["capability_id"],
+                aggregate_version=version + 1,
+                before_root=before_root,
+                after_root=after_root,
+                event_result={"state": "STORED", "dispatchState": "CANCELLED"},
+                occurred_at=now,
+            )
+            receipt_id = _record_runtime_receipt(
+                con, dispatch["dispatch_id"], "CANCELLED", evidence, now
+            )
+            retired.append(str(dispatch["dispatch_id"]))
+            event_ids.append(str(event["eventId"]))
+            receipt_ids.append(receipt_id)
+        con.commit()
+        return {
+            "ok": True,
+            "retiredDispatchIds": retired,
+            "eventIds": event_ids,
+            "runtimeReceiptIds": receipt_ids,
+            "stateRoot": _operational_state(con)["operationalStateRoot"],
+        }
     except Exception:
         if con.in_transaction:
             con.rollback()
@@ -1429,6 +1563,12 @@ def ensure_automatic_review(
                VALUES(?,?,?,?,?,'QUEUED',?,?,?)""",
             (review_id, semantic_message_id, requester_task_id, reviewer_endpoint_id, package_hash, now,
              requester_thread_id, reviewer_instance["reviewer_thread_id"]),
+        )
+        con.execute(
+            """UPDATE transport_attempts SET state='STORED',updated_at=?
+               WHERE message_id=? AND state='PENDING'
+                 AND source='AUTOMATIC_REVIEW_COMPANION'""",
+            (now, semantic_message_id),
         )
         con.execute("UPDATE reviewer_instances SET last_submission_at=?,updated_at=? WHERE reviewer_thread_id=?", (now, now, reviewer_instance["reviewer_thread_id"]))
         request = _runtime_request(actor=actor, capability=capability, message=message, operation="runtime.review.ensure", aggregate_type="AutomaticReview", aggregate_id=review_id, parameters={"packageSha256": package_hash})

@@ -1,6 +1,6 @@
 {
   "name": "post-office-next",
-  "version": "0.1.0+codex.20260912012907",
+  "version": "0.1.0+codex.20260912014443",
   "description": "Durable local Post Office contracts, migration, semantic workflow, transport recovery, and guarded cutover tooling.",
   "author": {
     "name": "Treatid2",

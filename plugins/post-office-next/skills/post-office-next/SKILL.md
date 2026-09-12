@@ -66,5 +66,12 @@ When the return is attached only in its source browser, use
 preserve the distinction between collection and delivery and must not be replaced with a Drive
 copy, a hand-authored browser manifest, or a delivery receipt inferred from collection alone.
 
+Treat an automatic-review request's linked `STORED` attempt as package custody, not ordinary
+pending mail. Never claim or deliver a review request through `runtime claim`; the automatic-review
+companion owns its activation manifest and receipt. If pre-fix reconciliation created unsent READY
+dispatches for review-owned attempts, run `runtime retire-review-transport` once. It is
+intentionally limited to unleased, unreceipted records and preserves both review state and retained
+package custody.
+
 Read `docs/delivery-phases.md` before describing P0, P0.1, P1, P2, P2.1, or P3.1 through P3.6. Those names are delivery
 gates, not defect priorities or runtime states.

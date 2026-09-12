@@ -48,6 +48,7 @@ from post_office.runtime import (  # noqa: E402
     reconcile_continuations,
     reconcile_transport,
     record_recovered_transport_receipt,
+    retire_review_owned_transport_dispatches,
     retire_continuation,
     withdraw_automatic_review,
 )
@@ -1392,20 +1393,6 @@ class OperationalKernelTests(unittest.TestCase):
                 con.commit()
             finally:
                 con.close()
-            ensured = ensure_automatic_review(
-                database, courier_credential, PLUGIN_ROOT,
-                review_id="PON-REVIEW-001", semantic_message_id="PON-MESSAGE-SEMANTIC",
-                requester_task_id="PON-TASK-REQUESTER", reviewer_endpoint_id="PON-ENDPOINT-RECIPIENT",
-                package_sha256=bundle_hash,
-            )
-            self.assertTrue(ensured["created"])
-            claimed_review = claim_next_review(database, courier_credential, PLUGIN_ROOT)
-            self.assertEqual(claimed_review["reviewId"], "PON-REVIEW-001")
-            withdrawn = withdraw_automatic_review(
-                database, courier_credential, PLUGIN_ROOT, review_id="PON-REVIEW-001",
-                reason="Test cancellation before review work",
-            )
-            self.assertEqual(withdrawn["state"], "WITHDRAWN")
             reconciled = reconcile_transport(database, courier_credential, PLUGIN_ROOT)
             self.assertEqual(len(reconciled["createdDispatchIds"]), 1)
             con = sqlite3.connect(database)
@@ -1416,6 +1403,7 @@ class OperationalKernelTests(unittest.TestCase):
                 con.commit()
             finally:
                 con.close()
+
             held = claim_next_transport(database, courier_credential, PLUGIN_ROOT, lease_seconds=60)
             self.assertFalse(held["available"])
             self.assertEqual(held["heldDispatchIds"], reconciled["createdDispatchIds"])
@@ -1436,6 +1424,79 @@ class OperationalKernelTests(unittest.TestCase):
                     (reconciled["createdDispatchIds"][0],),
                 )
                 con.commit()
+            finally:
+                con.close()
+
+            ensured = ensure_automatic_review(
+                database, courier_credential, PLUGIN_ROOT,
+                review_id="PON-REVIEW-001", semantic_message_id="PON-MESSAGE-SEMANTIC",
+                requester_task_id="PON-TASK-REQUESTER", reviewer_endpoint_id="PON-ENDPOINT-RECIPIENT",
+                package_sha256=bundle_hash,
+            )
+            self.assertTrue(ensured["created"])
+            claimed_review = claim_next_review(database, courier_credential, PLUGIN_ROOT)
+            self.assertEqual(claimed_review["reviewId"], "PON-REVIEW-001")
+            withdrawn = withdraw_automatic_review(
+                database, courier_credential, PLUGIN_ROOT, review_id="PON-REVIEW-001",
+                reason="Test cancellation before review work",
+            )
+            self.assertEqual(withdrawn["state"], "WITHDRAWN")
+
+            # Simulate a pre-fix review custody attempt and the unsent ordinary dispatch that an
+            # old reconciliation pass could materialize for it.
+            con = sqlite3.connect(database)
+            try:
+                recorded_at = "2026-09-12T00:00:00Z"
+                con.execute(
+                    "INSERT INTO transport_attempts VALUES(?,?,?,?,?,'PENDING',3,NULL,?,?)",
+                    ("PON-TRANSPORT-REVIEW-LEGACY", "PON-MESSAGE-SEMANTIC",
+                     "PON-BUNDLE-SEMANTIC", "AUTOMATIC_REVIEW_COMPANION",
+                     "PON-MAILBOX-RECIPIENT", recorded_at, recorded_at),
+                )
+                con.execute(
+                    """INSERT INTO transport_dispatches(
+                       dispatch_id,transport_attempt_id,channel,destination_endpoint_id,
+                       destination_mailbox_id,destination_generation,state,observable_marker,
+                       attempt_count,next_attempt_at,created_at,updated_at)
+                       VALUES(?,?,?,?,?,?,'READY',?,0,?,?,?)""",
+                    ("PON-DISPATCH-REVIEW-LEGACY", "PON-TRANSPORT-REVIEW-LEGACY",
+                     "PLAYWRIGHT_BROWSER", "PON-ENDPOINT-RECIPIENT", "PON-MAILBOX-RECIPIENT",
+                     1, "POST-OFFICE-PLAYWRIGHT-DISPATCH PON-DISPATCH-REVIEW-LEGACY",
+                     recorded_at, recorded_at, recorded_at),
+                )
+                con.commit()
+            finally:
+                con.close()
+            self.assertEqual(
+                reconcile_transport(database, courier_credential, PLUGIN_ROOT)["createdDispatchIds"],
+                [],
+            )
+            retired = retire_review_owned_transport_dispatches(
+                database, courier_credential, PLUGIN_ROOT
+            )
+            self.assertEqual(
+                retired["retiredDispatchIds"], ["PON-DISPATCH-REVIEW-LEGACY"]
+            )
+            self.assertEqual(
+                retire_review_owned_transport_dispatches(
+                    database, courier_credential, PLUGIN_ROOT
+                )["retiredDispatchIds"],
+                [],
+            )
+            con = sqlite3.connect(database)
+            try:
+                self.assertEqual(
+                    con.execute(
+                        "SELECT state FROM transport_attempts WHERE transport_attempt_id='PON-TRANSPORT-REVIEW-LEGACY'"
+                    ).fetchone()[0],
+                    "STORED",
+                )
+                self.assertEqual(
+                    con.execute(
+                        "SELECT state,last_error_code FROM transport_dispatches WHERE dispatch_id='PON-DISPATCH-REVIEW-LEGACY'"
+                    ).fetchone(),
+                    ("CANCELLED", "PON_REVIEW_ACTIVATION_OWNS_TRANSPORT"),
+                )
             finally:
                 con.close()
             claim = claim_next_transport(database, courier_credential, PLUGIN_ROOT, lease_seconds=60)

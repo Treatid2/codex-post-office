@@ -100,6 +100,14 @@ class AutoReviewAdapterTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(ensured["ensure_state"], "ABSENT_SUBMIT_CREATED")
             self.assertEqual(call(["status", "--review-id", "REVIEW-001"])[1]["status"], "QUEUED_LOCAL")
+            con = sqlite3.connect(database)
+            try:
+                self.assertEqual(
+                    con.execute("SELECT state FROM transport_attempts").fetchone()[0],
+                    "STORED",
+                )
+            finally:
+                con.close()
             withdrawn = call(["withdraw", "--review-id", "REVIEW-001", "--reason", "Changed", "--idempotency-key", "withdraw-key"])[1]
             self.assertEqual(withdrawn["status"], "WITHDRAWN")
             self.assertTrue(withdrawn["withdrawal_custody_preserved"])

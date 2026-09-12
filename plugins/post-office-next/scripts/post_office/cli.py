@@ -36,6 +36,7 @@ from .runtime import (
     issue_transport_delivery_manifest,
     reconcile_transport,
     record_recovered_transport_receipt,
+    retire_review_owned_transport_dispatches,
     reconcile_continuations,
     retire_continuation,
     return_automatic_review,
@@ -142,6 +143,7 @@ def _parser() -> argparse.ArgumentParser:
             "reconcile", "claim", "complete", "record-recovered", "ingest-browser-return",
             "issue-browser-return-collection", "ingest-collected-browser-return",
             "issue-delivery-manifest",
+            "retire-review-transport",
         ],
     )
     runtime.add_argument("--path", required=True)
@@ -383,6 +385,10 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
             if args.observations:
                 observations = json.loads(Path(args.observations).read_text(encoding="utf-8"))
             return reconcile_transport(Path(args.path), Path(args.credential), plugin_root, observations=observations)
+        if args.action == "retire-review-transport":
+            return retire_review_owned_transport_dispatches(
+                Path(args.path), Path(args.credential), plugin_root
+            )
         if args.action == "claim":
             return claim_next_transport(
                 Path(args.path), Path(args.credential), plugin_root,

@@ -78,6 +78,7 @@ See [`docs/automatic-review-boundary.md`](docs/automatic-review-boundary.md).
 ./scripts/Invoke-PostOfficeNext.ps1 kernel inspect --path <isolated-vnext.sqlite3>
 ./scripts/Invoke-PostOfficeNext.ps1 kernel execute --path <isolated-vnext.sqlite3> --request <request.json> --credential <credential.json>
 ./scripts/Invoke-PostOfficeNext.ps1 runtime reconcile --path <vnext.sqlite3> --credential <courier.json>
+./scripts/Invoke-PostOfficeNext.ps1 runtime retire-review-transport --path <vnext.sqlite3> --credential <courier.json>
 ./scripts/Invoke-PostOfficeNext.ps1 continuation reconcile --path <vnext.sqlite3> --credential <courier.json> [--observations <evidence.json>]
 ./scripts/Invoke-PostOfficeNext.ps1 runtime record-recovered --path <vnext.sqlite3> --credential <courier.json> --message-id <id> --bundle-id <id> --channel PLAYWRIGHT_BROWSER --observable-marker <marker> --observed-receipt-id <receipt>
 ./scripts/Invoke-PostOfficeNext.ps1 reviews ensure --path <vnext.sqlite3> --credential <courier.json> --review-id <id> --semantic-message-id <id> --requester-task-id <id> --reviewer-endpoint-id <id> --package-sha256 <sha256>
@@ -93,6 +94,13 @@ record-recovered` records an idempotent supplemental receipt
 when an exactly retained, already-delivered migrated message is later recovered through a direct
 transport; it does not rewrite the original fallback history or acknowledge the message for its
 recipient.
+
+Automatic-review request packages use `STORED` custody attempts linked by their automatic-review
+record because reviewer activation has its own manifest and receipt protocol. Ordinary `runtime
+reconcile` will not materialize those attempts. `runtime retire-review-transport` is an idempotent
+migration repair: it cancels only review-owned ordinary dispatches that are still READY, unleased,
+and unreceipted, records a journal event and runtime receipt for each, and preserves the review and
+package custody.
 
 After preparation, authenticated tasks use `scripts/post_office_task.py` for `task`, `inbox`,
 `activate`, `block`, `respond`, `review`, and `close`. Preparation writes replacement credentials

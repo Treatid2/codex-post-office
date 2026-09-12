@@ -504,7 +504,7 @@ def create_review(
     con.execute("UPDATE semantic_messages SET aggregate_root=? WHERE message_id=?", (message_root, message_id))
     con.execute("INSERT INTO message_bundles VALUES(?,?,?,?,?,?,?,?,?,?)", (bundle_id, message_id, package.name, 1, len(data), package_hash, digest([{ "ordinal": 0, "sha256": package_hash, "sizeBytes": len(data)}]), "REGISTERED", None, timestamp))
     con.execute("INSERT INTO bundle_payloads VALUES(?,?,?,?,?)", (bundle_id, 0, "payloads/0000-" + package_hash, len(data), package_hash))
-    con.execute("INSERT INTO transport_attempts VALUES(?,?,?,?,?,'PENDING',1,NULL,?,?)", ("PON-TRANSPORT-REVIEW-" + suffix, message_id, bundle_id, "AUTOMATIC_REVIEW_COMPANION", review_mailbox["mailbox_id"], timestamp, timestamp))
+    con.execute("INSERT INTO transport_attempts VALUES(?,?,?,?,?,'STORED',1,NULL,?,?)", ("PON-TRANSPORT-REVIEW-" + suffix, message_id, bundle_id, "AUTOMATIC_REVIEW_COMPANION", review_mailbox["mailbox_id"], timestamp, timestamp))
     con.execute(
         """INSERT INTO automatic_reviews(
            review_id,semantic_message_id,requester_task_id,reviewer_endpoint_id,package_sha256,state,queued_at,

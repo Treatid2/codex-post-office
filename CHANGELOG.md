@@ -4,6 +4,10 @@ All notable changes to this repository will be documented here.
 
 ## Unreleased
 
+- Separated automatic-review package custody from ordinary transport: its retained attempt is
+  `STORED` and ownership is explicit in the automatic-review relation. Ordinary reconciliation
+  now excludes review-owned requests, and `runtime retire-review-transport` auditably cancels only
+  unsent, unleased legacy dispatches without changing review state or deleting custody evidence.
 - Added the complete vNext browser-return courier path: authenticated immutable collection
   manifests, exact Playwright collection receipts, JSON or Markdown manifest/member validation,
   local-CAS ingestion as a pending RESPONSE, target-specific dispatch claims, and lease-bound
