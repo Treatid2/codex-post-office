@@ -1443,6 +1443,18 @@ class OperationalKernelTests(unittest.TestCase):
             self.assertTrue(ensured["created"])
             claimed_review = claim_next_review(database, courier_credential, PLUGIN_ROOT)
             self.assertEqual(claimed_review["reviewId"], "PON-REVIEW-001")
+            # Imported legacy rows may retain a wrapper-bundle digest that differs from the
+            # separately verified review package digest. Activation follows the review's exact
+            # package custody fields, not that migration-only wrapper identity.
+            con = sqlite3.connect(database)
+            try:
+                con.execute(
+                    "UPDATE message_bundles SET sha256=? WHERE bundle_id='PON-BUNDLE-SEMANTIC'",
+                    ("0" * 64,),
+                )
+                con.commit()
+            finally:
+                con.close()
             activation_dispatch_id = "PON-ARD-REVIEW-001"
             activation = issue_automatic_review_activation_manifest(
                 database, courier_credential, PLUGIN_ROOT,
@@ -1486,6 +1498,15 @@ class OperationalKernelTests(unittest.TestCase):
                 source_message_id=activation_source_message_id,
                 receipt_reference=activation_receipt_reference,
             )["replayed"])
+            con = sqlite3.connect(database)
+            try:
+                con.execute(
+                    "UPDATE message_bundles SET sha256=? WHERE bundle_id='PON-BUNDLE-SEMANTIC'",
+                    (bundle_hash,),
+                )
+                con.commit()
+            finally:
+                con.close()
             review_collection = issue_automatic_review_result_collection_manifest(
                 database, courier_credential, PLUGIN_ROOT,
                 review_id="PON-REVIEW-001", activation_dispatch_id=activation_dispatch_id,

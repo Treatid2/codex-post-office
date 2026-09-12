@@ -1829,10 +1829,12 @@ def issue_automatic_review_activation_manifest(
                 "Review activation lacks its active mailbox or verified package custody",
                 {},
             )
+        canonical_name = review["package_name"] or bundle["canonical_filename"]
+        package_size = review["package_size_bytes"] or retained_copy["size_bytes"]
         if (
-            bundle["sha256"] != review["package_sha256"]
-            or int(bundle["size_bytes"]) < 1
-            or Path(bundle["canonical_filename"]).name != bundle["canonical_filename"]
+            int(package_size) < 1
+            or int(retained_copy["size_bytes"]) != int(package_size)
+            or Path(canonical_name).name != canonical_name
         ):
             raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Review package identity differs", {})
         request_fingerprint = sha256_json({
@@ -1886,8 +1888,8 @@ def issue_automatic_review_activation_manifest(
             source_path = database_path.resolve().parent / source_path
         if (
             not source_path.is_file()
-            or source_path.stat().st_size != int(bundle["size_bytes"])
-            or sha256_bytes(source_path.read_bytes()) != bundle["sha256"]
+            or source_path.stat().st_size != int(package_size)
+            or sha256_bytes(source_path.read_bytes()) != review["package_sha256"]
         ):
             raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Retained review package differs", {})
         result_name = f"{review_id}_RESULT.md"
@@ -1895,7 +1897,7 @@ def issue_automatic_review_activation_manifest(
         prompt = (
             f"AUTOMATIC CSX CODE REVIEW\n\nReview ID: {review_id}\n"
             f"Activation Dispatch ID: {activation_dispatch_id}\nSubject: {subject}\n"
-            f"Package: attached as {bundle['canonical_filename']}\n"
+            f"Package: attached as {canonical_name}\n"
             f"Package SHA-256: {review['package_sha256']}\n"
             f"Exact result filename: {result_name}\n\n"
             "Process only this request under the automatic-review guidance and the attached package's "
@@ -1911,12 +1913,12 @@ def issue_automatic_review_activation_manifest(
         now = _timestamp()
         activation_id = "PON-REVIEW-ACTIVATION-" + uuid.uuid4().hex
         created_directory = database_path.resolve().parent / "playwright-activations" / activation_id
-        attachment_path = created_directory / "attachments" / bundle["canonical_filename"]
+        attachment_path = created_directory / "attachments" / canonical_name
         attachment_path.parent.mkdir(parents=True, exist_ok=False)
         shutil.copyfile(source_path, attachment_path)
         if (
-            attachment_path.stat().st_size != int(bundle["size_bytes"])
-            or sha256_bytes(attachment_path.read_bytes()) != bundle["sha256"]
+            attachment_path.stat().st_size != int(package_size)
+            or sha256_bytes(attachment_path.read_bytes()) != review["package_sha256"]
         ):
             raise PostOfficeError("PON_CUSTODY_NOT_VERIFIED", "Staged review package differs", {})
         manifest = {
@@ -1932,9 +1934,9 @@ def issue_automatic_review_activation_manifest(
             "promptSha256": sha256_bytes(prompt.encode("utf-8")),
             "attachments": [{
                 "path": str(attachment_path),
-                "sourceName": bundle["canonical_filename"],
-                "sizeBytes": int(bundle["size_bytes"]),
-                "sha256": bundle["sha256"],
+                "sourceName": canonical_name,
+                "sizeBytes": int(package_size),
+                "sha256": review["package_sha256"],
             }],
             "issuedAt": now,
         }
