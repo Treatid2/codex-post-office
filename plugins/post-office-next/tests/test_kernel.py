@@ -48,6 +48,7 @@ from post_office.runtime import (  # noqa: E402
     issue_automatic_review_result_collection_manifest,
     issue_automatic_review_activation_manifest,
     issue_browser_return_collection_manifest,
+    issue_supplemental_delivery_manifest,
     issue_transport_delivery_manifest,
     reconcile_continuations,
     reconcile_transport,
@@ -346,6 +347,28 @@ class OperationalKernelTests(unittest.TestCase):
             self.assertEqual(delivery_manifest["threadId"], destination_thread)
             self.assertEqual(delivery_manifest["messageId"], "DEMO-C2C-000002")
             self.assertEqual(delivery_manifest["attachments"][0]["sha256"], collected_hash)
+            complete_transport(
+                database, courier_credential, PLUGIN_ROOT,
+                dispatch_id=claim["dispatchId"], lease_token=claim["leaseToken"],
+                observable_marker=claim["observableMarker"],
+                observed_receipt_id="playwright-chatgpt:DEMO-C2C-000002",
+            )
+            recovery = issue_supplemental_delivery_manifest(
+                database, courier_credential, PLUGIN_ROOT,
+                message_id="DEMO-C2C-000002", bundle_id=ingested["bundleId"],
+                idempotency_key="missing-chatgpt-attachment-001",
+            )
+            recovery_manifest = json.loads(
+                Path(recovery["manifestPath"]).read_text(encoding="utf-8")
+            )
+            self.assertEqual(recovery_manifest["messageId"], "DEMO-C2C-000002")
+            self.assertEqual(recovery_manifest["attachments"][0]["sha256"], collected_hash)
+            self.assertIn("not a new message", recovery_manifest["prompt"])
+            self.assertTrue(issue_supplemental_delivery_manifest(
+                database, courier_credential, PLUGIN_ROOT,
+                message_id="DEMO-C2C-000002", bundle_id=ingested["bundleId"],
+                idempotency_key="missing-chatgpt-attachment-001",
+            )["replayed"])
 
             response_name = "DEMO_BROWSER_RESPONSE_RE-DEMO-C2C-000001.md"
             response = b"in_reply_to: DEMO-C2C-000001\nresult: COMPLETE_CANDIDATE\n"

@@ -35,6 +35,7 @@ from .runtime import (
     issue_automatic_review_result_collection_manifest,
     issue_automatic_review_activation_manifest,
     issue_browser_return_collection_manifest,
+    issue_supplemental_delivery_manifest,
     issue_transport_delivery_manifest,
     retain_outbound_package,
     reconcile_transport,
@@ -148,7 +149,7 @@ def _parser() -> argparse.ArgumentParser:
             "issue-browser-return-collection", "ingest-collected-browser-return",
             "issue-review-result-collection",
             "issue-review-activation", "record-review-activation-receipt",
-            "issue-delivery-manifest",
+            "issue-delivery-manifest", "issue-supplemental-delivery-manifest",
             "retain-outbound-package",
             "retire-review-transport",
         ],
@@ -488,6 +489,17 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
             return issue_transport_delivery_manifest(
                 Path(args.path), Path(args.credential), plugin_root,
                 dispatch_id=args.dispatch_id, lease_token=args.lease_token,
+            )
+        if args.action == "issue-supplemental-delivery-manifest":
+            if not all((args.message_id, args.bundle_id, args.idempotency_key)):
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "runtime issue-supplemental-delivery-manifest requires message ID, bundle ID and idempotency key",
+                )
+            return issue_supplemental_delivery_manifest(
+                Path(args.path), Path(args.credential), plugin_root,
+                message_id=args.message_id, bundle_id=args.bundle_id,
+                idempotency_key=args.idempotency_key,
             )
         if args.action == "retain-outbound-package":
             if not all((args.source_message_id, args.result_path, args.expected_sha256,

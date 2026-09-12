@@ -91,7 +91,8 @@ See [`docs/automatic-review-boundary.md`](docs/automatic-review-boundary.md).
 migration-history drift. It refuses version/name drift, schema drift, integrity failures, and any
 drifted migration containing data-changing or destructive SQL. It is not a general way to bypass
 database identity checks and requires the active bootstrap author credential. `runtime
-record-recovered` records an idempotent supplemental receipt
+issue-supplemental-delivery-manifest` issues an immutable same-message browser attachment recovery
+packet, and `record-recovered` records its exact supplemental receipt
 when an exactly retained, already-delivered migrated message is later recovered through a direct
 transport; it does not rewrite the original fallback history or acknowledge the message for its
 recipient.

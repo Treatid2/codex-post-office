@@ -71,6 +71,12 @@ Post Office custody, use `runtime retain-outbound-package` with its exact source
 SHA-256 before planning or registering the browser-facing semantic message. This operation records
 custody only; it does not infer the destination, authority, message identity, or delivery receipt.
 
+When a receipted browser delivery's attachment is demonstrably unavailable to the recipient, use
+`runtime issue-supplemental-delivery-manifest` with the original message, retained bundle, and one
+unique recovery idempotency key. Deliver that immutable manifest through the bridge, then record
+the exact marker and receipt with `runtime record-recovered`. This is a same-message attachment
+recovery; never create a replacement semantic message or infer new authority.
+
 Treat an automatic-review request's linked `STORED` attempt as package custody, not ordinary
 pending mail. Never claim or deliver a review request through `runtime claim`; the automatic-review
 companion owns its activation manifest and receipt. If pre-fix reconciliation created unsent READY

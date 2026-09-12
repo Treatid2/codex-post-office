@@ -1541,6 +1541,184 @@ def issue_transport_delivery_manifest(
             "threadId": thread_id, "messageId": message["message_id"]}
 
 
+def issue_supplemental_delivery_manifest(
+    database_path: Path,
+    credential_path: Path,
+    plugin_root: Path,
+    *,
+    message_id: str,
+    bundle_id: str,
+    idempotency_key: str,
+) -> dict[str, Any]:
+    """Issue an immutable same-message recovery packet after attachment loss.
+
+    This does not create a new semantic message or pre-claim successful delivery.  After the
+    bridge returns its exact receipt, ``record_recovered_transport_receipt`` records the
+    supplemental attempt atomically against the original retained message and bundle.
+    """
+    if not all(isinstance(value, str) and value.strip() for value in (
+        message_id, bundle_id, idempotency_key
+    )):
+        raise PostOfficeError(
+            "PON_INPUT_INVALID",
+            "Supplemental delivery requires message, bundle and idempotency identities",
+            {},
+        )
+    recovery_id = "PON-RECOVERY-" + sha256_json({
+        "messageId": message_id,
+        "bundleId": bundle_id,
+        "idempotencyKey": idempotency_key,
+    })[:32]
+    con = _open_writer(database_path, plugin_root)
+    try:
+        _courier(con, credential_path)
+        message = con.execute(
+            "SELECT * FROM semantic_messages WHERE message_id=?", (message_id,)
+        ).fetchone()
+        if not message or message["state"] not in {
+            "DELIVERED", "ACKNOWLEDGED", "RESPONSE_RETURNED", "REVIEWED", "CLOSED"
+        }:
+            raise PostOfficeError(
+                "PON_CONCURRENCY_CONFLICT",
+                "Supplemental delivery requires an already-delivered semantic message",
+                {"messageId": message_id, "state": message["state"] if message else None},
+            )
+        bundle = con.execute(
+            "SELECT * FROM message_bundles WHERE message_id=? AND bundle_id=?",
+            (message_id, bundle_id),
+        ).fetchone()
+        if not bundle:
+            raise PostOfficeError(
+                "PON_CUSTODY_NOT_VERIFIED",
+                "Supplemental delivery does not match the retained message bundle",
+                {"messageId": message_id, "bundleId": bundle_id},
+            )
+        mailbox = con.execute(
+            "SELECT * FROM mailboxes WHERE mailbox_id=? AND generation=?",
+            (message["recipient_mailbox_id"], message["recipient_generation"]),
+        ).fetchone()
+        endpoint = con.execute(
+            "SELECT * FROM endpoints WHERE endpoint_id=?", (mailbox["endpoint_id"],)
+        ).fetchone() if mailbox else None
+        if not mailbox or not endpoint or not _destination_is_active(
+            con,
+            endpoint_id=endpoint["endpoint_id"] if endpoint else None,
+            mailbox_id=message["recipient_mailbox_id"],
+            generation=int(message["recipient_generation"]),
+        ):
+            raise PostOfficeError(
+                "PON_INPUT_INVALID", "Supplemental browser destination is inactive", {}
+            )
+        destination = _destination_from_scope(json.loads(endpoint["access_scope_json"]))
+        thread_id = destination["destinationThreadId"]
+        if not isinstance(thread_id, str) or not re.fullmatch(r"[0-9a-fA-F-]{36}", thread_id):
+            raise PostOfficeError(
+                "PON_INPUT_INVALID", "Browser destination lacks a ChatGPT conversation UUID", {}
+            )
+        copy = con.execute(
+            "SELECT * FROM storage_copies WHERE content_sha256=? AND location_kind='LOCAL_CAS' LIMIT 1",
+            (bundle["sha256"],),
+        ).fetchone()
+        if not copy:
+            raise PostOfficeError(
+                "PON_CUSTODY_NOT_VERIFIED", "Supplemental delivery lacks local archive custody", {}
+            )
+        source_path = Path(copy["local_location"])
+        if not source_path.is_absolute():
+            source_path = database_path.resolve().parent / source_path
+        canonical_name = str(bundle["canonical_filename"])
+        stage_path = (
+            database_path.resolve().parent / "playwright-dispatches" / recovery_id
+            / "attachments" / canonical_name
+        )
+        prompt = (
+            "Post Office supplemental attachment recovery for the same immutable delivery. "
+            "The exact retained package is attached again because the recipient could not access "
+            "the original attachment. This is not a new message, handoff, authority, or candidate. "
+            "Do not use Google Drive or a developer MCP. Process the original bounded envelope "
+            "below and preserve its stated authority.\n\nEnvelope:\n"
+            + canonical_json_bytes({
+                "message_id": message["message_id"],
+                "message_type": message["message_type"],
+                "sender_endpoint_id": message["sender_endpoint_id"],
+                "recipient_mailbox_id": message["recipient_mailbox_id"],
+                "recipient_generation": int(message["recipient_generation"]),
+                "semantic_cycle_id": message["semantic_cycle_id"],
+                "requested_action": message["requested_action"],
+                "completion_criteria": message["completion_criteria"],
+                "ordered_payload_sha256": [bundle["sha256"]],
+                "recovery_for_message_id": message["message_id"],
+            }).decode("utf-8")
+        )
+        manifest = {
+            "schemaVersion": 1,
+            "dispatchId": recovery_id,
+            "threadId": thread_id,
+            "messageId": message["message_id"],
+            "mailboxId": message["recipient_mailbox_id"],
+            "mailboxGeneration": int(message["recipient_generation"]),
+            "prompt": prompt,
+            "attachments": [{
+                "path": str(stage_path),
+                "sourceName": canonical_name,
+                "sizeBytes": int(bundle["size_bytes"]),
+                "sha256": bundle["sha256"],
+            }],
+        }
+        con.rollback()
+    finally:
+        con.close()
+    stage_path.parent.mkdir(parents=True, exist_ok=True)
+    if stage_path.exists():
+        if (
+            stage_path.stat().st_size != int(bundle["size_bytes"])
+            or sha256_bytes(stage_path.read_bytes()) != bundle["sha256"]
+        ):
+            raise PostOfficeError(
+                "PON_CUSTODY_NOT_VERIFIED", "Existing supplemental attachment differs", {}
+            )
+    else:
+        temporary = stage_path.with_name(stage_path.name + "." + uuid.uuid4().hex + ".tmp")
+        shutil.copyfile(source_path, temporary)
+        if (
+            temporary.stat().st_size != int(bundle["size_bytes"])
+            or sha256_bytes(temporary.read_bytes()) != bundle["sha256"]
+        ):
+            temporary.unlink(missing_ok=True)
+            raise PostOfficeError(
+                "PON_CUSTODY_NOT_VERIFIED", "Supplemental attachment verification failed", {}
+            )
+        os.replace(temporary, stage_path)
+    manifest_path = stage_path.parent.parent / "delivery-manifest.json"
+    manifest_bytes = canonical_json_bytes(manifest) + b"\n"
+    if manifest_path.exists():
+        if manifest_path.read_bytes() != manifest_bytes:
+            raise PostOfficeError(
+                "PON_IDEMPOTENCY_CONFLICT",
+                "Retained supplemental delivery manifest differs",
+                {"recoveryId": recovery_id},
+            )
+        replayed = True
+    else:
+        temporary = manifest_path.with_name(
+            manifest_path.name + "." + uuid.uuid4().hex + ".tmp"
+        )
+        temporary.write_bytes(manifest_bytes)
+        os.replace(temporary, manifest_path)
+        replayed = False
+    return {
+        "ok": True,
+        "replayed": replayed,
+        "recoveryId": recovery_id,
+        "observableMarker": f"POST-OFFICE-PLAYWRIGHT-DISPATCH {recovery_id}",
+        "manifestPath": str(manifest_path),
+        "manifestSha256": sha256_bytes(manifest_bytes),
+        "threadId": thread_id,
+        "messageId": message["message_id"],
+        "bundleId": bundle["bundle_id"],
+    }
+
+
 def retain_outbound_package(
     database_path: Path,
     credential_path: Path,
