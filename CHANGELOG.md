@@ -4,6 +4,11 @@ All notable changes to this repository will be documented here.
 
 ## Unreleased
 
+- Added the complete vNext browser-return courier path: authenticated immutable collection
+  manifests, exact Playwright collection receipts, JSON or Markdown manifest/member validation,
+  local-CAS ingestion as a pending RESPONSE, target-specific dispatch claims, and lease-bound
+  Playwright delivery manifests. Browser returns can now travel browser-to-browser without Drive or
+  the retired transport shim.
 - Added an authenticated, idempotent `runtime ingest-browser-return` recovery command for exact
   manifest-backed browser returns that a human has already delivered to the intended browser. The
   command validates archive/member custody and endpoint bindings, imports the original bytes into

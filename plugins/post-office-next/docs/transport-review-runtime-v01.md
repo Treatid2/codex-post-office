@@ -32,6 +32,25 @@ allocates the next project message identity, registers the response relation, an
 already-visible destination turn as a receipted transport. It never sends a duplicate and does not
 convert reception into acknowledgement, acceptance, integration, further authority, or closure.
 
+For an ordinary browser return that exists only in its sender chat, the courier uses the complete
+collection and delivery path:
+
+1. `runtime issue-browser-return-collection` validates the delivered source message and exact
+   active browser-mailbox generation, then issues one immutable Playwright collection manifest.
+2. The Playwright bridge retrieves only that source turn's exact attachment and returns a
+   conversation-, collection- and SHA-256-bound receipt.
+3. `runtime ingest-collected-browser-return` revalidates the receipt, outer bytes, ZIP integrity,
+   source-message correlation and every JSON- or Markdown-manifested member. It imports the exact
+   archive into local CAS and creates one pending RESPONSE addressed back to the source sender.
+4. `runtime reconcile` materializes the transport. `runtime claim --dispatch-id ...` allows the
+   courier to lease that exact dispatch without disturbing unrelated queue entries.
+5. `runtime issue-delivery-manifest` verifies the active lease and destination generation, stages
+   a hash-identical attachment under its canonical filename, and issues the immutable Playwright
+   delivery manifest. The normal bridge delivery and `runtime complete` receipt finish transport.
+
+Neither collection nor delivery uses Drive. Collection, custody, delivery, acknowledgement,
+acceptance, integration and closure remain distinct states.
+
 The authenticated kernel also implements transport inspection, explicit retry, quarantine,
 duplicate tombstoning and attention listing. Retry creates a new numbered attempt; historical
 attempts remain retained.
@@ -61,6 +80,7 @@ Withdrawal is a state transition, never deletion of the review package or custod
 ## Browser boundary
 
 The runtime returns the selected channel, local retained location, destination identity, exact
-marker and lease. The dedicated Playwright companion consumes that bounded work item. Raw CDP is
+marker and lease. For browser delivery it also issues the immutable, lease-bound manifest consumed
+by the dedicated Playwright companion. Raw CDP is
 loopback-only and no raw browser or MCP endpoint is tunnelled publicly. Google Drive is not used on
 the successful path.

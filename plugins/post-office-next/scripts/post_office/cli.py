@@ -29,8 +29,11 @@ from .runtime import (
     complete_continuation,
     complete_transport,
     ensure_automatic_review,
+    ingest_collected_browser_return,
     ingest_recovered_browser_return,
     ingest_automatic_review_result,
+    issue_browser_return_collection_manifest,
+    issue_transport_delivery_manifest,
     reconcile_transport,
     record_recovered_transport_receipt,
     reconcile_continuations,
@@ -133,7 +136,14 @@ def _parser() -> argparse.ArgumentParser:
     kernel.add_argument("--allow-operation", action="append", dest="allowed_operations")
     kernel.add_argument("--expires-at")
     runtime = sub.add_parser("runtime")
-    runtime.add_argument("action", choices=["reconcile", "claim", "complete", "record-recovered", "ingest-browser-return"])
+    runtime.add_argument(
+        "action",
+        choices=[
+            "reconcile", "claim", "complete", "record-recovered", "ingest-browser-return",
+            "issue-browser-return-collection", "ingest-collected-browser-return",
+            "issue-delivery-manifest",
+        ],
+    )
     runtime.add_argument("--path", required=True)
     runtime.add_argument("--credential", required=True)
     runtime.add_argument("--observations")
@@ -153,6 +163,12 @@ def _parser() -> argparse.ArgumentParser:
     runtime.add_argument("--source-turn-id")
     runtime.add_argument("--destination-thread-id")
     runtime.add_argument("--destination-turn-id")
+    runtime.add_argument("--attachment-reference")
+    runtime.add_argument("--attachment-name")
+    runtime.add_argument("--observed-at")
+    runtime.add_argument("--required-text", action="append", default=[])
+    runtime.add_argument("--collection-manifest")
+    runtime.add_argument("--collection-receipt")
     reviews = sub.add_parser("reviews")
     reviews.add_argument("action", choices=["ensure", "claim", "ingest-result", "return", "status", "complete", "withdraw"])
     reviews.add_argument("--path", required=True)
@@ -369,7 +385,46 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
             return reconcile_transport(Path(args.path), Path(args.credential), plugin_root, observations=observations)
         if args.action == "claim":
             return claim_next_transport(
-                Path(args.path), Path(args.credential), plugin_root, lease_seconds=args.lease_seconds
+                Path(args.path), Path(args.credential), plugin_root,
+                lease_seconds=args.lease_seconds, dispatch_id=args.dispatch_id,
+            )
+        if args.action == "issue-browser-return-collection":
+            if not all((args.source_message_id, args.source_thread_id, args.source_turn_id,
+                        args.attachment_reference, args.attachment_name, args.expected_sha256,
+                        args.expected_size_bytes, args.observed_at)):
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "runtime issue-browser-return-collection requires source message/thread/turn, "
+                    "attachment reference/name, expected identity and observed time",
+                )
+            return issue_browser_return_collection_manifest(
+                Path(args.path), Path(args.credential), plugin_root,
+                source_message_id=args.source_message_id, source_thread_id=args.source_thread_id,
+                source_turn_id=args.source_turn_id, attachment_reference=args.attachment_reference,
+                attachment_name=args.attachment_name, expected_sha256=args.expected_sha256,
+                expected_size_bytes=args.expected_size_bytes, observed_at=args.observed_at,
+                required_text=args.required_text,
+            )
+        if args.action == "ingest-collected-browser-return":
+            if not all((args.collection_manifest, args.result_path, args.collection_receipt)):
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "runtime ingest-collected-browser-return requires collection manifest, result path and receipt",
+                )
+            return ingest_collected_browser_return(
+                Path(args.path), Path(args.credential), plugin_root,
+                collection_manifest_path=Path(args.collection_manifest), result_path=Path(args.result_path),
+                collection_receipt=args.collection_receipt,
+            )
+        if args.action == "issue-delivery-manifest":
+            if not all((args.dispatch_id, args.lease_token)):
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "runtime issue-delivery-manifest requires dispatch ID and lease token",
+                )
+            return issue_transport_delivery_manifest(
+                Path(args.path), Path(args.credential), plugin_root,
+                dispatch_id=args.dispatch_id, lease_token=args.lease_token,
             )
         if args.action == "record-recovered":
             if not all((args.message_id, args.bundle_id, args.channel, args.observable_marker, args.observed_receipt_id)):

@@ -41,7 +41,10 @@ from post_office.runtime import (  # noqa: E402
     claim_next_transport,
     complete_transport,
     ensure_automatic_review,
+    ingest_collected_browser_return,
     ingest_recovered_browser_return,
+    issue_browser_return_collection_manifest,
+    issue_transport_delivery_manifest,
     reconcile_continuations,
     reconcile_transport,
     record_recovered_transport_receipt,
@@ -103,8 +106,8 @@ class OperationalKernelTests(unittest.TestCase):
                 allowed_operations=["transport.inspect"], expires_at=None, plugin_root=PLUGIN_ROOT,
             )
             now = "2026-09-12T00:00:00Z"
-            source_thread = "PON-THREAD-ELOQUENT"
-            destination_thread = "PON-THREAD-MASTER"
+            source_thread = "6a837997-7528-83ea-83e7-3b721acf9b8d"
+            destination_thread = "6a81ee71-0f60-83eb-93d7-962f5ad0f963"
             con = sqlite3.connect(database)
             try:
                 con.execute(
@@ -160,6 +163,63 @@ class OperationalKernelTests(unittest.TestCase):
             finally:
                 con.close()
 
+            collected_response = b"in_reply_to: DEMO-C2C-000001\nresult: COLLECTED_THEN_ROUTED\n"
+            collected_response_hash = hashlib.sha256(collected_response).hexdigest()
+            collected_manifest = json.dumps({
+                "in_response_to": "DEMO-C2C-000001",
+                "members": [{
+                    "path": "DEMO_Collected-Response.md",
+                    "bytes": len(collected_response),
+                    "sha256": collected_response_hash,
+                }],
+            }).encode("utf-8")
+            collected_archive = root / "DEMO_COLLECTED_BROWSER_RETURN_v01.zip"
+            with zipfile.ZipFile(collected_archive, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("DEMO_Collected-Response.md", collected_response)
+                archive.writestr("DEMO_Package-Manifest_v02.json", collected_manifest)
+            collected_data = collected_archive.read_bytes()
+            collected_hash = hashlib.sha256(collected_data).hexdigest()
+            collection = issue_browser_return_collection_manifest(
+                database, courier_credential, PLUGIN_ROOT,
+                source_message_id="DEMO-C2C-000001", source_thread_id=source_thread,
+                source_turn_id="374f6018-f5c6-4ed5-a252-062fe51c5dc5",
+                attachment_reference=':chatgpt-content-reference{index="0"}',
+                attachment_name=collected_archive.name, expected_sha256=collected_hash,
+                expected_size_bytes=len(collected_data), observed_at="2026-09-12T00:10:00Z",
+                required_text=["DEMO-C2C-000001"],
+            )
+            collection_manifest = Path(collection["manifestPath"])
+            receipt = (
+                f"playwright-chatgpt-collection:{collection['collectionId']}:"
+                f"{source_thread}:{collected_hash}"
+            )
+            ingested = ingest_collected_browser_return(
+                database, courier_credential, PLUGIN_ROOT,
+                collection_manifest_path=collection_manifest, result_path=collected_archive,
+                collection_receipt=receipt,
+            )
+            self.assertEqual(ingested["messageId"], "DEMO-C2C-000002")
+            self.assertEqual(ingested["recipientMailboxId"], "DEMO-MBX-MASTER")
+            dispatches = reconcile_transport(database, courier_credential, PLUGIN_ROOT)
+            self.assertEqual(len(dispatches["createdDispatchIds"]), 1)
+            claim = claim_next_transport(
+                database, courier_credential, PLUGIN_ROOT, lease_seconds=60,
+                dispatch_id=dispatches["createdDispatchIds"][0],
+            )
+            self.assertEqual(claim["channel"], "PLAYWRIGHT_BROWSER")
+            self.assertEqual(
+                claim["observableMarker"],
+                f"POST-OFFICE-PLAYWRIGHT-DISPATCH {claim['dispatchId']}",
+            )
+            delivery = issue_transport_delivery_manifest(
+                database, courier_credential, PLUGIN_ROOT,
+                dispatch_id=claim["dispatchId"], lease_token=claim["leaseToken"],
+            )
+            delivery_manifest = json.loads(Path(delivery["manifestPath"]).read_text(encoding="utf-8"))
+            self.assertEqual(delivery_manifest["threadId"], destination_thread)
+            self.assertEqual(delivery_manifest["messageId"], "DEMO-C2C-000002")
+            self.assertEqual(delivery_manifest["attachments"][0]["sha256"], collected_hash)
+
             response_name = "DEMO_BROWSER_RESPONSE_RE-DEMO-C2C-000001.md"
             response = b"in_reply_to: DEMO-C2C-000001\nresult: COMPLETE_CANDIDATE\n"
             response_hash = hashlib.sha256(response).hexdigest()
@@ -185,7 +245,7 @@ class OperationalKernelTests(unittest.TestCase):
                 destination_thread_id=destination_thread, destination_turn_id="PON-TURN-MASTER",
             )
             self.assertFalse(result["replayed"])
-            self.assertEqual(result["messageId"], "DEMO-C2C-000002")
+            self.assertEqual(result["messageId"], "DEMO-C2C-000003")
             self.assertEqual(result["recipientMailboxId"], "DEMO-MBX-MASTER")
             replay = ingest_recovered_browser_return(
                 database, courier_credential, PLUGIN_ROOT,
@@ -199,7 +259,7 @@ class OperationalKernelTests(unittest.TestCase):
             con = sqlite3.connect(database)
             try:
                 self.assertEqual(
-                    con.execute("SELECT state FROM semantic_messages WHERE message_id='DEMO-C2C-000002'").fetchone()[0],
+                    con.execute("SELECT state FROM semantic_messages WHERE message_id='DEMO-C2C-000003'").fetchone()[0],
                     "DELIVERED",
                 )
                 self.assertEqual(

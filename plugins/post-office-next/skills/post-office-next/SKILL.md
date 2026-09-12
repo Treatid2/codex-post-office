@@ -59,5 +59,12 @@ the existing destination turn as a recovered delivery. It does not send or dupli
 message and does not infer acknowledgement, acceptance, integration, further work, or cycle
 closure.
 
+When the return is attached only in its source browser, use
+`runtime issue-browser-return-collection`, the bridge's exact `collect-attachment` operation,
+`runtime ingest-collected-browser-return`, targeted `runtime claim --dispatch-id`, and
+`runtime issue-delivery-manifest` before bridge delivery and `runtime complete`. These operations
+preserve the distinction between collection and delivery and must not be replaced with a Drive
+copy, a hand-authored browser manifest, or a delivery receipt inferred from collection alone.
+
 Read `docs/delivery-phases.md` before describing P0, P0.1, P1, P2, P2.1, or P3.1 through P3.6. Those names are delivery
 gates, not defect priorities or runtime states.

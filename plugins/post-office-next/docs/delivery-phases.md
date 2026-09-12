@@ -33,7 +33,9 @@ These labels describe engineering gates, not priority severities and not product
   result attachment but exposes no readable local path, issue an immutable collection manifest and
   use the dedicated Playwright profile to retrieve the exact in-thread or Library artifact. Verify
   conversation, turn, filename, byte count, SHA-256, and correlation text before importing it into
-  Post Office custody. This is implemented; it does not make browser metadata authoritative.
+  Post Office custody. The authoritative runtime now carries collected ordinary browser responses
+  through local CAS and the normal receipted transport queue to another browser without Drive or a
+  legacy shim. This is implemented; it does not make browser metadata authoritative.
 - **P2.3 — automatic-review activation increment.** Replace the unreliable native reviewer-task
   dispatch dependency with an immutable, zero-attachment Playwright activation manifest bound to
   the Review ID, Activation Dispatch ID, reviewer conversation, browser mailbox generation, exact
