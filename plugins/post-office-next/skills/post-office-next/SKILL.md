@@ -73,5 +73,13 @@ dispatches for review-owned attempts, run `runtime retire-review-transport` once
 intentionally limited to unleased, unreceipted records and preserves both review state and retained
 package custody.
 
+For an active automatic-review result, issue the bridge input with `runtime
+issue-review-result-collection`; do not reuse the normal browser-return issuer or mark the review
+request as ordinary delivered mail. Bind the exact activation dispatch, reviewer thread, assistant
+result turn, attachment reference, filename, byte count, SHA-256, and verdict observed in one
+authoritative task read. After exact bridge collection, import it with `reviews ingest-result`,
+deliver its targeted native requester wake, and receipt that dispatch. Collection and import do not
+complete the review or authorize its findings.
+
 Read `docs/delivery-phases.md` before describing P0, P0.1, P1, P2, P2.1, or P3.1 through P3.6. Those names are delivery
 gates, not defect priorities or runtime states.

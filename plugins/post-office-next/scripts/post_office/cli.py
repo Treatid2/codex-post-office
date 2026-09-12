@@ -32,6 +32,7 @@ from .runtime import (
     ingest_collected_browser_return,
     ingest_recovered_browser_return,
     ingest_automatic_review_result,
+    issue_automatic_review_result_collection_manifest,
     issue_browser_return_collection_manifest,
     issue_transport_delivery_manifest,
     reconcile_transport,
@@ -142,6 +143,7 @@ def _parser() -> argparse.ArgumentParser:
         choices=[
             "reconcile", "claim", "complete", "record-recovered", "ingest-browser-return",
             "issue-browser-return-collection", "ingest-collected-browser-return",
+            "issue-review-result-collection",
             "issue-delivery-manifest",
             "retire-review-transport",
         ],
@@ -171,6 +173,9 @@ def _parser() -> argparse.ArgumentParser:
     runtime.add_argument("--required-text", action="append", default=[])
     runtime.add_argument("--collection-manifest")
     runtime.add_argument("--collection-receipt")
+    runtime.add_argument("--review-id")
+    runtime.add_argument("--activation-dispatch-id")
+    runtime.add_argument("--verdict")
     reviews = sub.add_parser("reviews")
     reviews.add_argument("action", choices=["ensure", "claim", "ingest-result", "return", "status", "complete", "withdraw"])
     reviews.add_argument("--path", required=True)
@@ -410,6 +415,28 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
                 attachment_name=args.attachment_name, expected_sha256=args.expected_sha256,
                 expected_size_bytes=args.expected_size_bytes, observed_at=args.observed_at,
                 required_text=args.required_text,
+            )
+        if args.action == "issue-review-result-collection":
+            if not all((args.review_id, args.activation_dispatch_id, args.verdict,
+                        args.source_thread_id, args.source_turn_id, args.attachment_reference,
+                        args.attachment_name, args.expected_sha256, args.expected_size_bytes,
+                        args.observed_at)):
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "runtime issue-review-result-collection requires review and activation IDs, "
+                    "verdict, source thread/turn, attachment reference/name, expected identity "
+                    "and observed time",
+                )
+            return issue_automatic_review_result_collection_manifest(
+                Path(args.path), Path(args.credential), plugin_root,
+                review_id=args.review_id, activation_dispatch_id=args.activation_dispatch_id,
+                verdict=args.verdict, source_thread_id=args.source_thread_id,
+                source_turn_id=args.source_turn_id,
+                attachment_reference=args.attachment_reference,
+                attachment_name=args.attachment_name,
+                expected_sha256=args.expected_sha256,
+                expected_size_bytes=args.expected_size_bytes,
+                observed_at=args.observed_at,
             )
         if args.action == "ingest-collected-browser-return":
             if not all((args.collection_manifest, args.result_path, args.collection_receipt)):

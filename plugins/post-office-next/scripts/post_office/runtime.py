@@ -1015,6 +1015,144 @@ def issue_browser_return_collection_manifest(
     }
 
 
+def issue_automatic_review_result_collection_manifest(
+    database_path: Path,
+    credential_path: Path,
+    plugin_root: Path,
+    *,
+    review_id: str,
+    activation_dispatch_id: str,
+    verdict: str,
+    source_thread_id: str,
+    source_turn_id: str,
+    attachment_reference: str,
+    attachment_name: str,
+    expected_sha256: str,
+    expected_size_bytes: int,
+    observed_at: str,
+) -> dict[str, Any]:
+    """Issue one immutable collection manifest for an active automatic-review result."""
+    expected_sha256 = expected_sha256.lower().removeprefix("sha256:")
+    expected_name = f"{review_id}_RESULT.md"
+    if (
+        verdict not in {"PASS", "PASS_WITH_FINDINGS", "CHANGES_REQUIRED", "BLOCKED_BY_EVIDENCE"}
+        or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256)
+        or expected_size_bytes < 1
+        or expected_size_bytes > 268_435_456
+        or attachment_name != expected_name
+        or Path(attachment_name).name != attachment_name
+        or not re.fullmatch(r"[0-9a-fA-F-]{36}", source_thread_id)
+        or not re.fullmatch(r"[0-9a-fA-F-]{36}", source_turn_id)
+        or not activation_dispatch_id
+        or len(activation_dispatch_id) > 240
+        or not attachment_reference
+        or len(attachment_reference) > 2048
+    ):
+        raise PostOfficeError(
+            "PON_INPUT_INVALID", "Automatic-review collection identity is invalid", {}
+        )
+    _parse_timestamp(observed_at)
+    con = _open_writer(database_path, plugin_root)
+    try:
+        _courier(con, credential_path)
+        review = con.execute(
+            "SELECT * FROM automatic_reviews WHERE review_id=?", (review_id,)
+        ).fetchone()
+        if not review or review["state"] != "ACTIVE":
+            raise PostOfficeError(
+                "PON_CONCURRENCY_CONFLICT",
+                "Automatic review is not active",
+                {"reviewId": review_id},
+            )
+        if review["reviewer_thread_id"] != source_thread_id:
+            raise PostOfficeError(
+                "PON_OBSERVATION_MISMATCH",
+                "Review result source thread differs from its reviewer binding",
+                {},
+            )
+        message = con.execute(
+            "SELECT * FROM semantic_messages WHERE message_id=?",
+            (review["semantic_message_id"],),
+        ).fetchone()
+        mailbox = con.execute(
+            """SELECT * FROM mailboxes
+               WHERE mailbox_id=? AND generation=? AND endpoint_id=? AND status='ACTIVE'""",
+            (
+                message["recipient_mailbox_id"],
+                message["recipient_generation"],
+                review["reviewer_endpoint_id"],
+            ),
+        ).fetchone() if message else None
+        if not message or not mailbox:
+            raise PostOfficeError(
+                "PON_INPUT_INVALID", "Active review mailbox binding is unavailable", {}
+            )
+        identity = {
+            "reviewId": review_id,
+            "activationDispatchId": activation_dispatch_id,
+            "threadId": source_thread_id,
+            "sourceTurnId": source_turn_id,
+            "attachmentReference": attachment_reference,
+            "attachmentName": attachment_name,
+            "expectedBytes": expected_size_bytes,
+            "expectedSha256": expected_sha256,
+        }
+        collection_id = "PON-COLLECTION-REVIEW-RESULT-" + sha256_json(identity)[:24]
+        manifest = {
+            "schemaVersion": 1,
+            "collectionId": collection_id,
+            "threadId": source_thread_id,
+            "mailboxId": mailbox["mailbox_id"],
+            "mailboxGeneration": int(mailbox["generation"]),
+            "scopeKind": "AUTOMATIC_REVIEW",
+            "scopeId": review_id,
+            "sourceTurnId": source_turn_id,
+            "attachmentReference": attachment_reference,
+            "attachmentName": attachment_name,
+            "expectedBytes": expected_size_bytes,
+            "expectedSha256": expected_sha256,
+            "observedAt": observed_at,
+            "requiredText": [
+                "REVIEW RESULT",
+                f"Review ID: {review_id}",
+                f"Activation Dispatch ID: {activation_dispatch_id}",
+                f"Verdict: {verdict}",
+            ],
+        }
+        con.rollback()
+    finally:
+        con.close()
+    manifest_path = (
+        database_path.resolve().parent / "playwright-collections" / "manifests"
+        / collection_id / "manifest.json"
+    )
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_bytes = canonical_json_bytes(manifest) + b"\n"
+    if manifest_path.exists():
+        if manifest_path.read_bytes() != manifest_bytes:
+            raise PostOfficeError(
+                "PON_IDEMPOTENCY_CONFLICT",
+                "Retained automatic-review collection manifest differs",
+                {"collectionId": collection_id},
+            )
+        replayed = True
+    else:
+        temporary = manifest_path.with_name(
+            manifest_path.name + "." + uuid.uuid4().hex + ".tmp"
+        )
+        temporary.write_bytes(manifest_bytes)
+        os.replace(temporary, manifest_path)
+        replayed = False
+    return {
+        "ok": True,
+        "replayed": replayed,
+        "collectionId": collection_id,
+        "manifestPath": str(manifest_path),
+        "manifestSha256": sha256_bytes(manifest_bytes),
+        "reviewId": review_id,
+    }
+
+
 def ingest_collected_browser_return(
     database_path: Path,
     credential_path: Path,

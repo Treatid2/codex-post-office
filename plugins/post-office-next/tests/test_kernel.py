@@ -43,6 +43,7 @@ from post_office.runtime import (  # noqa: E402
     ensure_automatic_review,
     ingest_collected_browser_return,
     ingest_recovered_browser_return,
+    issue_automatic_review_result_collection_manifest,
     issue_browser_return_collection_manifest,
     issue_transport_delivery_manifest,
     reconcile_continuations,
@@ -1387,7 +1388,7 @@ class OperationalKernelTests(unittest.TestCase):
                        reviewer_thread_id,endpoint_id,label,status,rotation_order,guidance_url,
                        minimum_interval_minutes,last_submission_at,registered_at,updated_at,retired_at)
                        VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
-                    ("PON-REVIEWER-THREAD-001", "PON-ENDPOINT-RECIPIENT", "Reviewer 1", "ACTIVE", 1,
+                    ("00000000-0000-0000-0000-000000000001", "PON-ENDPOINT-RECIPIENT", "Reviewer 1", "ACTIVE", 1,
                      None, 30, None, "2026-09-04T12:00:00Z", "2026-09-04T12:00:00Z", None),
                 )
                 con.commit()
@@ -1436,6 +1437,20 @@ class OperationalKernelTests(unittest.TestCase):
             self.assertTrue(ensured["created"])
             claimed_review = claim_next_review(database, courier_credential, PLUGIN_ROOT)
             self.assertEqual(claimed_review["reviewId"], "PON-REVIEW-001")
+            review_collection = issue_automatic_review_result_collection_manifest(
+                database, courier_credential, PLUGIN_ROOT,
+                review_id="PON-REVIEW-001", activation_dispatch_id="PON-ARD-REVIEW-001",
+                verdict="PASS", source_thread_id="00000000-0000-0000-0000-000000000001",
+                source_turn_id="00000000-0000-0000-0000-000000000002",
+                attachment_reference=':chatgpt-content-reference{index="0"}',
+                attachment_name="PON-REVIEW-001_RESULT.md", expected_sha256="7" * 64,
+                expected_size_bytes=1234, observed_at="2026-09-12T00:00:00Z",
+            )
+            self.assertFalse(review_collection["replayed"])
+            self.assertEqual(
+                json.loads(Path(review_collection["manifestPath"]).read_text(encoding="utf-8"))["scopeKind"],
+                "AUTOMATIC_REVIEW",
+            )
             withdrawn = withdraw_automatic_review(
                 database, courier_credential, PLUGIN_ROOT, review_id="PON-REVIEW-001",
                 reason="Test cancellation before review work",

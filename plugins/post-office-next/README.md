@@ -79,6 +79,7 @@ See [`docs/automatic-review-boundary.md`](docs/automatic-review-boundary.md).
 ./scripts/Invoke-PostOfficeNext.ps1 kernel execute --path <isolated-vnext.sqlite3> --request <request.json> --credential <credential.json>
 ./scripts/Invoke-PostOfficeNext.ps1 runtime reconcile --path <vnext.sqlite3> --credential <courier.json>
 ./scripts/Invoke-PostOfficeNext.ps1 runtime retire-review-transport --path <vnext.sqlite3> --credential <courier.json>
+./scripts/Invoke-PostOfficeNext.ps1 runtime issue-review-result-collection --path <vnext.sqlite3> --credential <courier.json> --review-id <id> --activation-dispatch-id <id> --verdict <verdict> --source-thread-id <uuid> --source-turn-id <uuid> --attachment-reference <reference> --attachment-name <name> --expected-sha256 <sha256> --expected-size-bytes <bytes> --observed-at <timestamp>
 ./scripts/Invoke-PostOfficeNext.ps1 continuation reconcile --path <vnext.sqlite3> --credential <courier.json> [--observations <evidence.json>]
 ./scripts/Invoke-PostOfficeNext.ps1 runtime record-recovered --path <vnext.sqlite3> --credential <courier.json> --message-id <id> --bundle-id <id> --channel PLAYWRIGHT_BROWSER --observable-marker <marker> --observed-receipt-id <receipt>
 ./scripts/Invoke-PostOfficeNext.ps1 reviews ensure --path <vnext.sqlite3> --credential <courier.json> --review-id <id> --semantic-message-id <id> --requester-task-id <id> --reviewer-endpoint-id <id> --package-sha256 <sha256>
@@ -101,6 +102,12 @@ reconcile` will not materialize those attempts. `runtime retire-review-transport
 migration repair: it cancels only review-owned ordinary dispatches that are still READY, unleased,
 and unreceipted, records a journal event and runtime receipt for each, and preserves the review and
 package custody.
+
+Use `runtime issue-review-result-collection` only after an authoritative task read identifies an
+exact result attached to the active review's retained reviewer conversation. It produces a
+Playwright collection manifest bound to the active review, activation dispatch, exact result turn,
+filename, size, hash, and verdict. Collection still grants no result or implementation authority;
+run `reviews ingest-result` only after the bridge returns exact matching bytes.
 
 After preparation, authenticated tasks use `scripts/post_office_task.py` for `task`, `inbox`,
 `activate`, `block`, `respond`, `review`, and `close`. Preparation writes replacement credentials

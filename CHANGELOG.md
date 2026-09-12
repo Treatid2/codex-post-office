@@ -4,6 +4,9 @@ All notable changes to this repository will be documented here.
 
 ## Unreleased
 
+- Added `runtime issue-review-result-collection`, an immutable manifest issuer that binds an active
+  review, activation dispatch, reviewer thread, result turn, exact attachment identity, and verdict
+  without pretending the review request was ordinary delivered mail.
 - Separated automatic-review package custody from ordinary transport: its retained attempt is
   `STORED` and ownership is explicit in the automatic-review relation. Ordinary reconciliation
   now excludes review-owned requests, and `runtime retire-review-transport` auditably cancels only
