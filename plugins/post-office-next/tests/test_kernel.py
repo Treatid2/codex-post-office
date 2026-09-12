@@ -53,6 +53,7 @@ from post_office.runtime import (  # noqa: E402
     reconcile_transport,
     record_recovered_transport_receipt,
     record_automatic_review_activation_receipt,
+    retain_outbound_package,
     retire_review_owned_transport_dispatches,
     retire_continuation,
     withdraw_automatic_review,
@@ -401,6 +402,39 @@ class OperationalKernelTests(unittest.TestCase):
                 )
             finally:
                 con.close()
+
+            outbound_response = b"in_reply_to: DEMO-C2C-000001\nresult: LOCAL_TASK_RETURN\n"
+            outbound_hash = hashlib.sha256(outbound_response).hexdigest()
+            outbound_manifest = json.dumps({
+                "manifestSelfExcluded": True,
+                "fileCount": 1,
+                "payloadBytes": len(outbound_response),
+                "files": [{
+                    "path": "DEMO_Local-Task-Return.md",
+                    "bytes": len(outbound_response),
+                    "sha256": outbound_hash,
+                }],
+            }).encode("utf-8")
+            outbound_archive = root / "DEMO_LOCAL_TASK_RETURN_v01.zip"
+            with zipfile.ZipFile(outbound_archive, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("DEMO_Local-Task-Return.md", outbound_response)
+                archive.writestr("MANIFEST.json", outbound_manifest)
+            outbound_data = outbound_archive.read_bytes()
+            retained = retain_outbound_package(
+                database, courier_credential, PLUGIN_ROOT,
+                source_message_id="DEMO-C2C-000001", result_path=outbound_archive,
+                expected_sha256=hashlib.sha256(outbound_data).hexdigest(),
+                expected_size_bytes=len(outbound_data),
+            )
+            self.assertFalse(retained["replayed"])
+            self.assertEqual(retained["correlationMessageId"], "DEMO-C2C-000001")
+            replayed = retain_outbound_package(
+                database, courier_credential, PLUGIN_ROOT,
+                source_message_id="DEMO-C2C-000001", result_path=outbound_archive,
+                expected_sha256=hashlib.sha256(outbound_data).hexdigest(),
+                expected_size_bytes=len(outbound_data),
+            )
+            self.assertTrue(replayed["replayed"])
 
     def _bootstrapped(self, root: Path) -> tuple[Path, Path]:
         database = root / "post-office-next.sqlite3"

@@ -1541,6 +1541,180 @@ def issue_transport_delivery_manifest(
             "threadId": thread_id, "messageId": message["message_id"]}
 
 
+def retain_outbound_package(
+    database_path: Path,
+    credential_path: Path,
+    plugin_root: Path,
+    *,
+    source_message_id: str,
+    result_path: Path,
+    expected_sha256: str,
+    expected_size_bytes: int,
+) -> dict[str, Any]:
+    """Retain one manifest-backed local return before semantic routing.
+
+    Task/native returns may already exist as immutable files before a browser-facing semantic
+    message is planned.  This operation closes that custody gap without inventing the message,
+    destination, authority, or delivery receipt.  Normal ``message.plan`` / ``message.register`` /
+    ``message.route`` operations remain responsible for those decisions.
+    """
+    if not isinstance(source_message_id, str) or not source_message_id.strip():
+        raise PostOfficeError("PON_INPUT_INVALID", "Outbound package source message is required", {})
+    expected_sha256 = expected_sha256.lower().removeprefix("sha256:")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_sha256) or expected_size_bytes < 1:
+        raise PostOfficeError("PON_INPUT_INVALID", "Outbound package identity is invalid", {})
+    try:
+        data = result_path.read_bytes()
+    except OSError as exc:
+        raise PostOfficeError(
+            "PON_INPUT_INVALID", "Outbound package file is unavailable", {"path": str(result_path)}
+        ) from exc
+    observed_sha256 = sha256_bytes(data)
+    if len(data) != expected_size_bytes or observed_sha256 != expected_sha256:
+        raise PostOfficeError(
+            "PON_OBSERVATION_MISMATCH",
+            "Outbound package bytes differ from the declared identity",
+            {
+                "expectedSha256": expected_sha256,
+                "observedSha256": observed_sha256,
+                "expectedSizeBytes": expected_size_bytes,
+                "observedSizeBytes": len(data),
+            },
+        )
+
+    con = _open_writer(database_path, plugin_root)
+    target: Path | None = None
+    target_created = False
+    try:
+        capability, actor = _courier(con, credential_path)
+        source = con.execute(
+            "SELECT * FROM semantic_messages WHERE message_id=?", (source_message_id,)
+        ).fetchone()
+        if not source or source["state"] not in {
+            "DELIVERED", "ACKNOWLEDGED", "RESPONSE_RETURNED", "REVIEWED", "CLOSED"
+        }:
+            raise PostOfficeError(
+                "PON_CONCURRENCY_CONFLICT",
+                "Outbound package source is not a delivered semantic message",
+                {"sourceMessageId": source_message_id},
+            )
+        archive_evidence = _validate_manifest_backed_return(
+            data,
+            source_message_id,
+            correlation_message_ids=_browser_return_correlation_ids(con, source_message_id),
+        )
+        retained = con.execute(
+            "SELECT * FROM storage_copies WHERE content_sha256=? AND location_kind='LOCAL_CAS' "
+            "ORDER BY storage_copy_id LIMIT 1",
+            (expected_sha256,),
+        ).fetchone()
+        if retained:
+            retained_path = Path(retained["local_location"])
+            if not retained_path.is_absolute():
+                retained_path = database_path.resolve().parent / retained_path
+            if (
+                int(retained["size_bytes"]) != len(data)
+                or not retained_path.exists()
+                or retained_path.stat().st_size != len(data)
+                or sha256_bytes(retained_path.read_bytes()) != expected_sha256
+            ):
+                raise PostOfficeError(
+                    "PON_CUSTODY_NOT_VERIFIED", "Retained outbound storage copy is inconsistent", {}
+                )
+            con.rollback()
+            return {
+                "ok": True,
+                "replayed": True,
+                "sourceMessageId": source_message_id,
+                "storageCopyId": retained["storage_copy_id"],
+                "localLocation": str(retained_path),
+                "sha256": expected_sha256,
+                "sizeBytes": len(data),
+                **archive_evidence,
+            }
+
+        relative = f"objects/{expected_sha256[:2]}/{expected_sha256}"
+        target = database_path.resolve().parent / Path(relative)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            if target.stat().st_size != len(data) or sha256_bytes(target.read_bytes()) != expected_sha256:
+                raise PostOfficeError(
+                    "PON_CUSTODY_NOT_VERIFIED", "Existing outbound CAS object differs", {}
+                )
+        else:
+            temporary = target.with_name(target.name + "." + uuid.uuid4().hex + ".tmp")
+            temporary.write_bytes(data)
+            if temporary.stat().st_size != len(data) or sha256_bytes(temporary.read_bytes()) != expected_sha256:
+                temporary.unlink(missing_ok=True)
+                raise PostOfficeError(
+                    "PON_CUSTODY_NOT_VERIFIED", "Outbound package CAS verification failed", {}
+                )
+            os.replace(temporary, target)
+            target_created = True
+
+        now = _timestamp()
+        storage_id = "PON-STORAGE-OUTBOUND-" + expected_sha256[:32]
+        detail = {
+            "sourceMessageId": source_message_id,
+            "storageCopyId": storage_id,
+            "localLocation": relative,
+            "sha256": expected_sha256,
+            "sizeBytes": len(data),
+            **archive_evidence,
+        }
+        con.execute(
+            "INSERT INTO storage_copies VALUES(?,?,?,?,?,?,?,?)",
+            (
+                storage_id,
+                expected_sha256,
+                "LOCAL_CAS",
+                relative,
+                len(data),
+                "AUTHORITATIVE",
+                "SHA256_READBACK",
+                now,
+            ),
+        )
+        before_root = _aggregate_root("StorageCopy", storage_id, None)
+        after_root = _aggregate_root("StorageCopy", storage_id, detail)
+        request = _runtime_request(
+            actor=actor,
+            capability=capability,
+            message=source,
+            operation="runtime.outboundPackage.retain",
+            aggregate_type="StorageCopy",
+            aggregate_id=storage_id,
+            parameters=detail,
+        )
+        event = append_hub_event(
+            con,
+            request=request,
+            capability_id=capability["capability_id"],
+            aggregate_version=1,
+            before_root=before_root,
+            after_root=after_root,
+            event_result={"state": "RETAINED", **detail},
+            occurred_at=now,
+        )
+        state_root = _operational_state(con)["operationalStateRoot"]
+        con.commit()
+        return {
+            "ok": True,
+            "replayed": False,
+            "eventId": event["eventId"],
+            "stateRoot": state_root,
+            **detail,
+        }
+    except Exception:
+        if con.in_transaction:
+            con.rollback()
+        if target_created and target is not None:
+            target.unlink(missing_ok=True)
+        raise
+    finally:
+        con.close()
+
+
 def ingest_recovered_browser_return(
     database_path: Path,
     credential_path: Path,

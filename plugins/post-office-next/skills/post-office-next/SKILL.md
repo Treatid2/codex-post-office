@@ -66,6 +66,11 @@ When the return is attached only in its source browser, use
 preserve the distinction between collection and delivery and must not be replaced with a Drive
 copy, a hand-authored browser manifest, or a delivery receipt inferred from collection alone.
 
+When an immutable manifest-backed task/native return already exists locally but is not yet in
+Post Office custody, use `runtime retain-outbound-package` with its exact source message, size, and
+SHA-256 before planning or registering the browser-facing semantic message. This operation records
+custody only; it does not infer the destination, authority, message identity, or delivery receipt.
+
 Treat an automatic-review request's linked `STORED` attempt as package custody, not ordinary
 pending mail. Never claim or deliver a review request through `runtime claim`; the automatic-review
 companion owns its activation manifest and receipt. If pre-fix reconciliation created unsent READY

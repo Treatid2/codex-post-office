@@ -36,6 +36,7 @@ from .runtime import (
     issue_automatic_review_activation_manifest,
     issue_browser_return_collection_manifest,
     issue_transport_delivery_manifest,
+    retain_outbound_package,
     reconcile_transport,
     record_automatic_review_activation_receipt,
     record_recovered_transport_receipt,
@@ -148,6 +149,7 @@ def _parser() -> argparse.ArgumentParser:
             "issue-review-result-collection",
             "issue-review-activation", "record-review-activation-receipt",
             "issue-delivery-manifest",
+            "retain-outbound-package",
             "retire-review-transport",
         ],
     )
@@ -486,6 +488,20 @@ def dispatch(args: argparse.Namespace, plugin_root: Path) -> dict[str, Any]:
             return issue_transport_delivery_manifest(
                 Path(args.path), Path(args.credential), plugin_root,
                 dispatch_id=args.dispatch_id, lease_token=args.lease_token,
+            )
+        if args.action == "retain-outbound-package":
+            if not all((args.source_message_id, args.result_path, args.expected_sha256,
+                        args.expected_size_bytes)):
+                raise PostOfficeError(
+                    "PON_INPUT_INVALID",
+                    "runtime retain-outbound-package requires --source-message-id, --result-path, "
+                    "--expected-sha256 and --expected-size-bytes",
+                )
+            return retain_outbound_package(
+                Path(args.path), Path(args.credential), plugin_root,
+                source_message_id=args.source_message_id, result_path=Path(args.result_path),
+                expected_sha256=args.expected_sha256,
+                expected_size_bytes=args.expected_size_bytes,
             )
         if args.action == "record-recovered":
             if not all((args.message_id, args.bundle_id, args.channel, args.observable_marker, args.observed_receipt_id)):
